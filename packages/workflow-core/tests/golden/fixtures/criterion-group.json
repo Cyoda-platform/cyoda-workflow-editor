@@ -1,0 +1,43 @@
+{
+  "importMode": "MERGE",
+  "workflows": [
+    {
+      "version": "1.0",
+      "name": "criterion-group",
+      "initialState": "idle",
+      "active": true,
+      "states": {
+        "idle": {
+          "transitions": [
+            {
+              "name": "escalate",
+              "next": "escalated",
+              "manual": false,
+              "disabled": false,
+              "criterion": {
+                "type": "group",
+                "operator": "AND",
+                "conditions": [
+                  {
+                    "type": "simple",
+                    "jsonPath": "$.priority",
+                    "operation": "EQUALS",
+                    "value": "high"
+                  },
+                  {
+                    "type": "simple",
+                    "jsonPath": "$.assignee",
+                    "operation": "NOT_NULL"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "escalated": {
+          "transitions": []
+        }
+      }
+    }
+  ]
+}

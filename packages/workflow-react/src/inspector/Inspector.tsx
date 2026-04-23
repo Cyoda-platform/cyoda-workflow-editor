@@ -1,0 +1,277 @@
+import { useMemo, useState } from "react";
+import type {
+  DomainPatch,
+  ValidationIssue,
+  WorkflowEditorDocument,
+} from "@cyoda/workflow-core";
+import { serializeEditorDocument } from "@cyoda/workflow-core";
+import { useMessages } from "../i18n/context.js";
+import type { Selection } from "../state/types.js";
+import { processorUuidsInOrder, resolveSelection } from "./resolve.js";
+import { WorkflowForm } from "./WorkflowForm.js";
+import { StateForm } from "./StateForm.js";
+import { TransitionForm } from "./TransitionForm.js";
+import { ProcessorForm } from "./ProcessorForm.js";
+
+export interface InspectorProps {
+  document: WorkflowEditorDocument;
+  selection: Selection;
+  issues: ValidationIssue[];
+  readOnly: boolean;
+  onDispatch: (patch: DomainPatch) => void;
+  onSelectionChange: (sel: Selection) => void;
+  onRequestDeleteState: (workflow: string, stateCode: string) => void;
+}
+
+function issueKeyForSelection(selection: Selection): string | null {
+  if (!selection) return null;
+  switch (selection.kind) {
+    case "workflow":
+      return selection.workflow;
+    case "state":
+      return selection.nodeId;
+    case "transition":
+      return selection.transitionUuid;
+    case "processor":
+      return selection.processorUuid;
+    case "criterion":
+      return selection.hostId;
+  }
+}
+
+export function Inspector({
+  document: doc,
+  selection,
+  issues,
+  readOnly,
+  onDispatch,
+  onSelectionChange,
+  onRequestDeleteState,
+}: InspectorProps) {
+  const messages = useMessages();
+  const [tab, setTab] = useState<"properties" | "json">("properties");
+  const resolved = useMemo(() => resolveSelection(doc, selection), [doc, selection]);
+
+  const selectionIssueKey = issueKeyForSelection(selection);
+  const selectionIssues = useMemo(() => {
+    if (!selectionIssueKey) return [];
+    return issues.filter((i) => i.targetId === selectionIssueKey);
+  }, [issues, selectionIssueKey]);
+
+  const breadcrumb = renderBreadcrumb(resolved);
+
+  return (
+    <aside
+      style={{
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        background: "#F8FAFC",
+        borderLeft: "1px solid #E2E8F0",
+        minWidth: 280,
+      }}
+      data-testid="inspector"
+    >
+      <header
+        style={{
+          padding: "10px 12px",
+          borderBottom: "1px solid #E2E8F0",
+          fontSize: 12,
+          color: "#475569",
+        }}
+      >
+        {breadcrumb}
+      </header>
+      <div style={{ display: "flex", borderBottom: "1px solid #E2E8F0" }}>
+        <TabButton active={tab === "properties"} onClick={() => setTab("properties")}>
+          {messages.inspector.properties}
+        </TabButton>
+        <TabButton active={tab === "json"} onClick={() => setTab("json")}>
+          {messages.inspector.json}
+        </TabButton>
+      </div>
+      <div style={{ padding: 12, overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: 16 }}>
+        {tab === "properties" && (
+          <>
+            {!resolved && <EmptyState message={messages.inspector.empty} />}
+            {resolved?.kind === "workflow" && (
+              <WorkflowForm workflow={resolved.workflow} disabled={readOnly} onDispatch={onDispatch} />
+            )}
+            {resolved?.kind === "state" && (
+              <StateForm
+                workflow={resolved.workflow}
+                stateCode={resolved.stateCode}
+                state={resolved.state}
+                disabled={readOnly}
+                onDispatch={onDispatch}
+                onRequestDelete={() =>
+                  onRequestDeleteState(resolved.workflow.name, resolved.stateCode)
+                }
+              />
+            )}
+            {resolved?.kind === "transition" && (
+              <TransitionForm
+                workflow={resolved.workflow}
+                stateCode={resolved.stateCode}
+                transition={resolved.transition}
+                transitionUuid={resolved.transitionUuid}
+                transitionIndex={resolved.transitionIndex}
+                anchors={
+                  doc.meta.workflowUi[resolved.workflow.name]?.edgeAnchors?.[
+                    resolved.transitionUuid
+                  ]
+                }
+                disabled={readOnly}
+                onDispatch={onDispatch}
+                onSelectProcessor={(ordinalKey) => {
+                  const [, transitionUuid, indexStr] = ordinalKey.split(":");
+                  if (!transitionUuid || !indexStr) return;
+                  const procUuids = processorUuidsInOrder(doc, transitionUuid);
+                  const uuid = procUuids[Number.parseInt(indexStr, 10)];
+                  if (uuid) onSelectionChange({ kind: "processor", processorUuid: uuid });
+                }}
+              />
+            )}
+            {resolved?.kind === "processor" && (
+              <ProcessorForm
+                processor={resolved.processor}
+                processorUuid={resolved.processorUuid}
+                processorIndex={resolved.processorIndex}
+                transitionUuid={resolved.transitionUuid}
+                disabled={readOnly}
+                onDispatch={onDispatch}
+              />
+            )}
+          </>
+        )}
+        {tab === "json" && <JsonPreview document={doc} resolved={resolved} />}
+
+        {selectionIssues.length > 0 && (
+          <IssuesList issues={selectionIssues} title={messages.inspector.issues} />
+        )}
+      </div>
+    </aside>
+  );
+}
+
+function renderBreadcrumb(resolved: ReturnType<typeof resolveSelection>): string {
+  if (!resolved) return "";
+  if (resolved.kind === "workflow") return resolved.workflow.name;
+  if (resolved.kind === "state")
+    return `${resolved.workflow.name} › ${resolved.stateCode}`;
+  if (resolved.kind === "transition")
+    return `${resolved.workflow.name} › ${resolved.stateCode} › ${resolved.transition.name}`;
+  if (resolved.kind === "processor")
+    return `${resolved.workflow.name} › ${resolved.stateCode} › ${resolved.transition.name} › ${resolved.processor.name}`;
+  return "";
+}
+
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        flex: 1,
+        padding: "8px 12px",
+        background: active ? "white" : "transparent",
+        border: "none",
+        borderBottom: active ? "2px solid #0F172A" : "2px solid transparent",
+        fontSize: 13,
+        fontWeight: active ? 600 : 400,
+        cursor: "pointer",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function EmptyState({ message }: { message: string }) {
+  return <p style={{ color: "#64748B", fontSize: 13 }}>{message}</p>;
+}
+
+function IssuesList({
+  issues,
+  title,
+}: {
+  issues: ValidationIssue[];
+  title: string;
+}) {
+  return (
+    <section style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <header style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "#475569" }}>
+        {title}
+      </header>
+      {issues.map((issue, i) => (
+        <div
+          key={`${issue.code}-${i}`}
+          style={{
+            padding: 8,
+            border: `1px solid ${severityBorder(issue.severity)}`,
+            background: severityBackground(issue.severity),
+            borderRadius: 4,
+            fontSize: 12,
+          }}
+        >
+          <strong>{issue.code}</strong>
+          <div>{issue.message}</div>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function severityBorder(severity: ValidationIssue["severity"]): string {
+  if (severity === "error") return "#FCA5A5";
+  if (severity === "warning") return "#FCD34D";
+  return "#93C5FD";
+}
+function severityBackground(severity: ValidationIssue["severity"]): string {
+  if (severity === "error") return "#FEF2F2";
+  if (severity === "warning") return "#FFFBEB";
+  return "#EFF6FF";
+}
+
+function JsonPreview({
+  document: doc,
+  resolved,
+}: {
+  document: WorkflowEditorDocument;
+  resolved: ReturnType<typeof resolveSelection>;
+}) {
+  const json = useMemo(() => {
+    if (!resolved) return serializeEditorDocument(doc);
+    if (resolved.kind === "workflow") return JSON.stringify(resolved.workflow, null, 2);
+    if (resolved.kind === "state") return JSON.stringify(resolved.state, null, 2);
+    if (resolved.kind === "transition") return JSON.stringify(resolved.transition, null, 2);
+    if (resolved.kind === "processor") return JSON.stringify(resolved.processor, null, 2);
+    return "";
+  }, [doc, resolved]);
+  return (
+    <pre
+      style={{
+        fontFamily: "ui-monospace, 'SF Mono', Menlo, monospace",
+        fontSize: 12,
+        margin: 0,
+        padding: 8,
+        background: "white",
+        border: "1px solid #E2E8F0",
+        borderRadius: 4,
+        maxHeight: 480,
+        overflow: "auto",
+      }}
+      data-testid="inspector-json"
+    >
+      {json}
+    </pre>
+  );
+}

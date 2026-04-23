@@ -1,0 +1,96 @@
+import type { Workflow } from "../types/workflow.js";
+import type { Processor } from "../types/processor.js";
+import type { Criterion } from "../types/criterion.js";
+
+/**
+ * Input normalization (spec §8.1) — runs after schema parse.
+ * Mutates a deep-cloned structure; return the normalized form.
+ *
+ * 1. Drop empty optional containers (processors: [], criterion: {} already rejected by schema).
+ * 2. Trim whitespace on name fields.
+ * 3. Coerce numeric fields to integers — already enforced by Zod int().
+ * 4. Coerce empty desc to undefined.
+ */
+export function normalizeWorkflowInput(workflow: Workflow): Workflow {
+  const out: Workflow = {
+    ...workflow,
+    name: workflow.name.trim(),
+    version: workflow.version.trim(),
+    initialState: workflow.initialState.trim(),
+    states: {},
+  };
+
+  if (workflow.desc !== undefined) {
+    const trimmed = workflow.desc;
+    if (trimmed.length === 0) {
+      delete out.desc;
+    } else {
+      out.desc = trimmed;
+    }
+  }
+
+  if (workflow.criterion !== undefined) {
+    out.criterion = normalizeCriterion(workflow.criterion);
+  }
+
+  for (const [code, state] of Object.entries(workflow.states)) {
+    const trimmedCode = code.trim();
+    const normTransitions = state.transitions.map((t) => {
+      const nt = {
+        ...t,
+        name: t.name.trim(),
+        next: t.next.trim(),
+      };
+      if (t.criterion !== undefined) nt.criterion = normalizeCriterion(t.criterion);
+      if (t.processors !== undefined) {
+        if (t.processors.length === 0) {
+          delete nt.processors;
+        } else {
+          nt.processors = t.processors.map(normalizeProcessor);
+        }
+      }
+      return nt;
+    });
+    out.states[trimmedCode] = { transitions: normTransitions };
+  }
+
+  return out;
+}
+
+export function normalizeCriterion(criterion: Criterion): Criterion {
+  switch (criterion.type) {
+    case "simple":
+      return criterion;
+    case "group":
+      return { ...criterion, conditions: criterion.conditions.map(normalizeCriterion) };
+    case "function": {
+      const fn = criterion.function;
+      const out: Criterion = {
+        type: "function",
+        function: {
+          name: fn.name.trim(),
+          ...(fn.config !== undefined ? { config: fn.config } : {}),
+          ...(fn.criterion !== undefined
+            ? { criterion: normalizeCriterion(fn.criterion) }
+            : {}),
+        },
+      };
+      return out;
+    }
+    case "lifecycle":
+      return criterion;
+    case "array":
+      return criterion;
+  }
+}
+
+export function normalizeProcessor(p: Processor): Processor {
+  if (p.type === "externalized") {
+    return { ...p, name: p.name.trim() };
+  }
+  return {
+    ...p,
+    name: p.name.trim(),
+    config: { ...p.config, transition: p.config.transition.trim() },
+  };
+}

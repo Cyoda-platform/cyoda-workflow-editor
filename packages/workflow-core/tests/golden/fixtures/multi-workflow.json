@@ -1,0 +1,63 @@
+{
+  "importMode": "REPLACE",
+  "workflows": [
+    {
+      "version": "1.0",
+      "name": "approval",
+      "initialState": "draft",
+      "active": true,
+      "states": {
+        "draft": {
+          "transitions": [
+            {
+              "name": "submit",
+              "next": "review",
+              "manual": true,
+              "disabled": false
+            }
+          ]
+        },
+        "review": {
+          "transitions": [
+            {
+              "name": "approve",
+              "next": "approved",
+              "manual": true,
+              "disabled": false
+            },
+            {
+              "name": "reject",
+              "next": "draft",
+              "manual": true,
+              "disabled": false
+            }
+          ]
+        },
+        "approved": {
+          "transitions": []
+        }
+      }
+    },
+    {
+      "version": "1.0",
+      "name": "notify",
+      "initialState": "queued",
+      "active": false,
+      "states": {
+        "queued": {
+          "transitions": [
+            {
+              "name": "send",
+              "next": "sent",
+              "manual": false,
+              "disabled": false
+            }
+          ]
+        },
+        "sent": {
+          "transitions": []
+        }
+      }
+    }
+  ]
+}

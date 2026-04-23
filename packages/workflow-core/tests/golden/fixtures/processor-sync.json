@@ -1,0 +1,38 @@
+{
+  "importMode": "MERGE",
+  "workflows": [
+    {
+      "version": "1.0",
+      "name": "processor-sync",
+      "desc": "Exercises a SYNC externalized processor with config.",
+      "initialState": "pending",
+      "active": true,
+      "states": {
+        "pending": {
+          "transitions": [
+            {
+              "name": "enrich",
+              "next": "enriched",
+              "manual": false,
+              "disabled": false,
+              "processors": [
+                {
+                  "type": "externalized",
+                  "name": "fetch_entity_details",
+                  "executionMode": "SYNC",
+                  "config": {
+                    "attachEntity": true,
+                    "responseTimeoutMs": 5000
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "enriched": {
+          "transitions": []
+        }
+      }
+    }
+  ]
+}

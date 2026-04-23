@@ -1,0 +1,28 @@
+{
+  "name": "@cyoda/workflow-graph",
+  "version": "0.0.0",
+  "description": "Cyoda workflow graph projection: domain → nodes/edges/annotations; canvas edits → domain patches.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "bench": "vitest bench --run"
+  },
+  "dependencies": {
+    "@cyoda/workflow-core": "workspace:*"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "name": "@cyoda/workflow-layout",
+  "version": "0.0.0",
+  "description": "ELK-based layout adapter for Cyoda workflow graphs (three presets, sync + worker).",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@cyoda/workflow-core": "workspace:*",
+    "@cyoda/workflow-graph": "workspace:*",
+    "elkjs": "^0.9.3"
+  }
+}

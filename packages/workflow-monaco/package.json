@@ -1,0 +1,45 @@
+{
+  "name": "@cyoda/workflow-monaco",
+  "version": "0.0.0",
+  "description": "Monaco JSON editor wired to the Cyoda workflow domain — schema registration, validation markers, debounced replaceSession.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@cyoda/workflow-core": "workspace:*",
+    "jsonc-parser": "^3.2.1",
+    "zod-to-json-schema": "^3.22.5"
+  },
+  "peerDependencies": {
+    "monaco-editor": "^0.45.0 || ^0.46.0 || ^0.47.0 || ^0.48.0 || ^0.49.0 || ^0.50.0",
+    "react": "^18",
+    "react-dom": "^18"
+  },
+  "peerDependenciesMeta": {
+    "react": { "optional": true },
+    "react-dom": { "optional": true }
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.66",
+    "@types/react-dom": "^18.2.22",
+    "monaco-editor": "^0.50.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  }
+}
