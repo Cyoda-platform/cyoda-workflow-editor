@@ -107,8 +107,8 @@ importers:
         specifier: workspace:*
         version: link:../workflow-graph
       elkjs:
-        specifier: ^0.9.3
-        version: 0.9.3
+        specifier: ^0.11.1
+        version: 0.11.1
 
   packages/workflow-monaco:
     dependencies:
@@ -1451,8 +1451,8 @@ packages:
   electron-to-chromium@1.5.344:
     resolution: {integrity: sha512-4MxfbmNDm+KPh066EZy+eUnkcDPcZ35wNmOWzFuh/ijvHsve6kbLTLURy88uCNK5FbpN+yk2nQY6BYh1GEt+wg==}
 
-  elkjs@0.9.3:
-    resolution: {integrity: sha512-f/ZeWvW/BCXbhGEf1Ujp29EASo/lk1FDnETgNKwJrsVvGZhUWCZyg3xLJjAsxfOmt8KjswHmI5EwCQcPMpOYhQ==}
+  elkjs@0.11.1:
+    resolution: {integrity: sha512-zxxR9k+rx5ktMwT/FwyLdPCrq7xN6e4VGGHH8hA01vVYKjTFik7nHOxBnAYtrgYUB1RpAiLvA1/U2YraWxyKKg==}
 
   enquirer@2.4.1:
     resolution: {integrity: sha512-rRqJg/6gd538VHvR3PSrdRBb/1Vy2YfzHqzvbhGIQpDRKIa4FgV/54b5Q1xYSxOOwKvjXweS26E0Q+nAMwp2pQ==}
@@ -4062,7 +4062,7 @@ snapshots:
 
   electron-to-chromium@1.5.344: {}
 
-  elkjs@0.9.3: {}
+  elkjs@0.11.1: {}
 
   enquirer@2.4.1:
     dependencies:

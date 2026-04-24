@@ -38,6 +38,6 @@
   "dependencies": {
     "@cyoda/workflow-core": "workspace:*",
     "@cyoda/workflow-graph": "workspace:*",
-    "elkjs": "^0.9.3"
+    "elkjs": "^0.11.1"
   }
 }
