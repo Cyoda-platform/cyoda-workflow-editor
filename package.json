@@ -5,6 +5,12 @@
   "description": "Cyoda Workflow Editor monorepo",
   "license": "Apache-2.0",
   "packageManager": "pnpm@9.0.0",
+  "pnpm": {
+    "overrides": {
+      "react": "^18.3.1",
+      "react-dom": "^18.3.1"
+    }
+  },
   "scripts": {
     "build": "pnpm -r --filter=\"./packages/*\" run build",
     "test": "pnpm -r --filter=\"./packages/*\" run test",

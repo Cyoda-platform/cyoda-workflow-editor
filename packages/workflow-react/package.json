@@ -42,8 +42,8 @@
     "@cyoda/workflow-viewer": "workspace:*"
   },
   "peerDependencies": {
-    "react": "^18",
-    "react-dom": "^18",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "reactflow": "^11"
   },
   "devDependencies": {
@@ -51,8 +51,8 @@
     "@types/react": "^18.2.66",
     "@types/react-dom": "^18.2.22",
     "jsdom": "^24.0.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "reactflow": "^11.11.4"
   }
 }
