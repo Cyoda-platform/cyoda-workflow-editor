@@ -3,26 +3,35 @@ import type { LayoutPreset } from "../types.js";
 /**
  * ELK option bundles per spec §13.2.
  *
- * - `websiteCompact` — dense top-to-bottom flow used by the read-only website
- *   viewer. Tight spacing, straight/orthogonal routing, priority weights
- *   nudge initial states to the top and terminals to the bottom.
- * - `configuratorReadable` — the editor's default. Larger spacing, more
- *   relaxed layering so the inspector + canvas interplay stays readable.
- * - `opsAudit` — forensic view: maximum spacing, aggressive priority weights
- *   pulling terminals down, orthogonal routing so back-edges are
- *   visually distinct.
+ * Key spacing parameters:
+ * - `elk.spacing.nodeNode`                        — gap between sibling nodes in the same layer
+ * - `elk.layered.spacing.nodeNodeBetweenLayers`   — gap between layers (column gap in H, row gap in V)
+ * - `elk.spacing.edgeNode`                        — minimum clearance between an edge segment and a node box
+ * - `elk.spacing.edgeEdge`                        — minimum clearance between two parallel edge segments
  *
- * All three use ELK's `layered` algorithm with top-to-bottom direction.
- * Individual call-sites can override specific keys via `LayoutOptions.elk`.
+ * `edgeNode` and `edgeEdge` prevent edge paths from hugging node borders and
+ * from stacking on top of each other in dense branching sections.
+ *
+ * `nodeNodeBetweenLayers` must be wide enough to fit the edge-label pill that
+ * sits in the inter-layer channel. In vertical mode the label height matters;
+ * in horizontal mode the label width matters.
  */
-export function optionsFor(preset: LayoutPreset): Record<string, string> {
+export function optionsFor(
+  preset: LayoutPreset,
+  orientation: "vertical" | "horizontal" = "vertical",
+): Record<string, string> {
+  if (orientation === "horizontal") {
+    return horizontalOptionsFor(preset);
+  }
   switch (preset) {
     case "websiteCompact":
       return {
         "elk.algorithm": "layered",
         "elk.direction": "DOWN",
         "elk.spacing.nodeNode": "32",
-        "elk.layered.spacing.nodeNodeBetweenLayers": "48",
+        "elk.layered.spacing.nodeNodeBetweenLayers": "64",
+        "elk.spacing.edgeNode": "12",
+        "elk.spacing.edgeEdge": "8",
         "elk.edgeRouting": "ORTHOGONAL",
         "elk.layered.nodePlacement.strategy": "BRANDES_KOEPF",
         "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP",
@@ -34,7 +43,9 @@ export function optionsFor(preset: LayoutPreset): Record<string, string> {
         "elk.algorithm": "layered",
         "elk.direction": "DOWN",
         "elk.spacing.nodeNode": "56",
-        "elk.layered.spacing.nodeNodeBetweenLayers": "80",
+        "elk.layered.spacing.nodeNodeBetweenLayers": "96",
+        "elk.spacing.edgeNode": "20",
+        "elk.spacing.edgeEdge": "12",
         "elk.edgeRouting": "ORTHOGONAL",
         "elk.layered.nodePlacement.strategy": "BRANDES_KOEPF",
         "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP",
@@ -46,7 +57,63 @@ export function optionsFor(preset: LayoutPreset): Record<string, string> {
         "elk.algorithm": "layered",
         "elk.direction": "DOWN",
         "elk.spacing.nodeNode": "72",
-        "elk.layered.spacing.nodeNodeBetweenLayers": "112",
+        "elk.layered.spacing.nodeNodeBetweenLayers": "128",
+        "elk.spacing.edgeNode": "24",
+        "elk.spacing.edgeEdge": "16",
+        "elk.edgeRouting": "ORTHOGONAL",
+        "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
+        "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP",
+        "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
+        "elk.layered.thoroughness": "14",
+      };
+  }
+}
+
+/**
+ * Horizontal (left-to-right) ELK options.
+ *
+ * `nodeNodeBetweenLayers` is larger than in vertical mode because in RIGHT
+ * direction the inter-layer channel must fit the full WIDTH of the edge-label
+ * pill (≈70-120 px) rather than just its height (≈18-32 px).
+ */
+function horizontalOptionsFor(preset: LayoutPreset): Record<string, string> {
+  switch (preset) {
+    case "websiteCompact":
+      return {
+        "elk.algorithm": "layered",
+        "elk.direction": "RIGHT",
+        "elk.spacing.nodeNode": "40",
+        "elk.layered.spacing.nodeNodeBetweenLayers": "120",
+        "elk.spacing.edgeNode": "12",
+        "elk.spacing.edgeEdge": "8",
+        "elk.edgeRouting": "ORTHOGONAL",
+        "elk.layered.nodePlacement.strategy": "BRANDES_KOEPF",
+        "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP",
+        "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
+        "elk.layered.thoroughness": "7",
+      };
+    case "configuratorReadable":
+      return {
+        "elk.algorithm": "layered",
+        "elk.direction": "RIGHT",
+        "elk.spacing.nodeNode": "56",
+        "elk.layered.spacing.nodeNodeBetweenLayers": "140",
+        "elk.spacing.edgeNode": "20",
+        "elk.spacing.edgeEdge": "12",
+        "elk.edgeRouting": "ORTHOGONAL",
+        "elk.layered.nodePlacement.strategy": "BRANDES_KOEPF",
+        "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP",
+        "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
+        "elk.layered.thoroughness": "10",
+      };
+    case "opsAudit":
+      return {
+        "elk.algorithm": "layered",
+        "elk.direction": "RIGHT",
+        "elk.spacing.nodeNode": "72",
+        "elk.layered.spacing.nodeNodeBetweenLayers": "180",
+        "elk.spacing.edgeNode": "24",
+        "elk.spacing.edgeEdge": "16",
         "elk.edgeRouting": "ORTHOGONAL",
         "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
         "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP",
@@ -58,8 +125,7 @@ export function optionsFor(preset: LayoutPreset): Record<string, string> {
 
 /**
  * Per-node priority hint: initial states pinned to layer 0, terminals
- * pushed down via a large layerConstraint-like weight. ELK Layered honours
- * `elk.layered.priority.*` keys per-node.
+ * pushed down via a large layerConstraint-like weight.
  */
 export function nodePriority(role: string): number {
   if (role === "initial" || role === "initial-terminal") return 10;

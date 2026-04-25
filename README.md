@@ -117,25 +117,44 @@ playwright install chromium` before the visual commands succeed.
 ## Release and publishing
 
 This monorepo uses [Changesets](https://github.com/changesets/changesets)
-for versioning and npm releases.
+for versioning and npm releases. Detailed release policy lives in
+[`ai/npm-release-mechanism.md`](ai/npm-release-mechanism.md).
 
-Basic release flow:
+Release rules:
+
+- Changesets is the source of truth for package versions.
+- CI is the only publisher.
+- Do not run `npm publish` from a laptop.
+- `cyoda-workflow-editor` and `@cyoda/docs-embed-demo` remain private.
+- Trusted publishing via GitHub Actions OIDC is preferred; bootstrap token
+  publishing is temporary only.
+
+Stable release flow:
 
 ```sh
-# 1. Add a changeset describing the package changes
+# 1. Add a changeset in the PR that changes a public package
 pnpm changeset
 
-# 2. Review the generated markdown in .changeset/
+# 2. Merge PRs to main; CI maintains the Version Packages PR
 
-# 3. Version packages locally when you are ready
-pnpm version-packages
+# 3. Review and merge the Version Packages PR when ready to ship
 
-# 4. Publish from CI on main via the release workflow
+# 4. CI publishes changed public packages from main
 ```
 
-The release workflow publishes only the public library packages listed
-above. The root workspace package and `@cyoda/docs-embed-demo` remain
-private and are not publish targets.
+Prerelease flow uses Changesets prerelease mode:
+
+```sh
+pnpm prerelease:enter rc
+pnpm version-packages
+# commit the prerelease versions on the stabilization branch
+# then use the release workflow from CI for publication
+pnpm prerelease:exit
+```
+
+The release workflow publishes only the public library packages listed above.
+The root workspace package and `@cyoda/docs-embed-demo` are not publish
+targets.
 
 Consumer install examples:
 

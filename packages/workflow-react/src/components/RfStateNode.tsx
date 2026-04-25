@@ -13,6 +13,8 @@ export interface RfStateNodeData {
   node: StateNode;
   hasError: boolean;
   hasWarning: boolean;
+  /** Computed by the layout engine. When absent the token defaults are used. */
+  size?: { width: number; height: number };
 }
 
 /**
@@ -20,9 +22,11 @@ export interface RfStateNodeData {
  * chrome. Only interaction affordances (handles, selection ring) differ.
  */
 function RfStateNodeImpl({ data, selected }: NodeProps<RfStateNodeData>) {
-  const { node, hasError, hasWarning } = data;
+  const { node, hasError, hasWarning, size } = data;
   const palette = paletteFor(node);
-  const { width, height, radius, strokeWidth } = geometry.node;
+  const { radius, strokeWidth } = geometry.node;
+  const width = size?.width ?? geometry.node.width;
+  const height = size?.height ?? geometry.node.height;
   const category = roleCategoryLabel(node);
   const isTerminal = node.role === "terminal" || node.role === "initial-terminal";
 

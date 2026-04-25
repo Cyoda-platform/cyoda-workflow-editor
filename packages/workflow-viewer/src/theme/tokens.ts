@@ -149,8 +149,8 @@ export const typography = {
   monoFamily: 'ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace',
   stateCategory: { size: 10, weight: 700, tracking: "0.12em" },
   stateTitle: { size: 14, weight: 700, tracking: "0.01em" },
-  edgeLabel: { size: 10, weight: 700, tracking: "0.04em" },
-  badge: { size: 9, weight: 600, tracking: "0.04em" },
+  edgeLabel: { size: 9, weight: 700, tracking: "0.04em" },
+  badge: { size: 8, weight: 600, tracking: "0.04em" },
 };
 
 export const geometry = {
@@ -168,8 +168,8 @@ export const geometry = {
     arrowheadSize: 6,
   },
   labelPill: {
-    paddingX: 10,
-    paddingY: 6,
+    paddingX: 6,
+    paddingY: 3,
     radius: 6,
     shadowOpacity: 0.08,
   },

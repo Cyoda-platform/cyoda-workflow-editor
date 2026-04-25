@@ -1,33 +1,44 @@
-name: CI
+name: Release Preflight
 
 on:
   push:
+    branches:
+      - release/**
   pull_request:
+    branches:
+      - main
+      - release/**
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  validate:
+  preflight:
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'release/') || startsWith(github.base_ref, 'release/')
     runs-on: ubuntu-latest
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
+          registry-url: https://registry.npmjs.org
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Show Changesets status
+        run: pnpm exec changeset status
 
       - name: Typecheck
         run: pnpm typecheck
@@ -37,3 +48,6 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      - name: Release metadata and publish dry-run checks
+        run: pnpm release:preflight

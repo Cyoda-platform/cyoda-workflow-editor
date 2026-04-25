@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "Cyoda Workflow Editor monorepo",
+  "license": "Apache-2.0",
   "packageManager": "pnpm@9.0.0",
   "scripts": {
     "build": "pnpm -r --filter=\"./packages/*\" run build",
@@ -14,7 +15,10 @@
     "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release": "changeset publish"
+    "release": "node ./scripts/release-publish.mjs",
+    "release:preflight": "node ./scripts/release-preflight.mjs",
+    "prerelease:enter": "changeset pre enter",
+    "prerelease:exit": "changeset pre exit"
   },
   "devDependencies": {
     "@changesets/cli": "^2.31.0",

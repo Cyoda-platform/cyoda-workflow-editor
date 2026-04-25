@@ -5,6 +5,7 @@ import type {
   Workflow,
   WorkflowEditorDocument,
 } from "@cyoda/workflow-core";
+import type { LayoutOptions } from "@cyoda/workflow-layout";
 import { I18nContext, mergeMessages, type PartialMessages } from "../i18n/context.js";
 import { useEditorStore } from "../state/store.js";
 import { deriveFromDocument } from "../state/derive.js";
@@ -21,6 +22,7 @@ export interface WorkflowEditorProps {
   document: WorkflowEditorDocument;
   mode?: EditorMode;
   messages?: PartialMessages;
+  layoutOptions?: LayoutOptions;
   onChange?: (doc: WorkflowEditorDocument) => void;
   onSave?: (doc: WorkflowEditorDocument) => void;
 }
@@ -47,6 +49,7 @@ export function WorkflowEditor({
   document: initialDocument,
   mode = "editor",
   messages,
+  layoutOptions,
   onChange,
   onSave,
 }: WorkflowEditorProps) {
@@ -200,6 +203,7 @@ export function WorkflowEditor({
               issues={derived.issues}
               activeWorkflow={state.activeWorkflow}
               selection={state.selection}
+              layoutOptions={layoutOptions}
               onSelectionChange={(sel: Selection) => actions.setSelection(sel)}
               onConnect={handleConnect}
               readOnly={readOnly}

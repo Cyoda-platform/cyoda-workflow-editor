@@ -40,10 +40,14 @@ export interface PinnedNode {
 
 export interface LayoutOptions {
   preset?: LayoutPreset;
+  /** Flow direction. "vertical" = top-to-bottom (default), "horizontal" = left-to-right. */
+  orientation?: "vertical" | "horizontal";
   /** Default node size (layout will treat every state as this size). */
   nodeSize?: { width: number; height: number };
   /** Nodes whose positions are fixed and must be respected. */
   pinned?: PinnedNode[];
+  /** Raw ELK option overrides applied last, after preset and orientation. */
+  elk?: Record<string, string>;
 }
 
 export interface ElkLayoutAdapter {

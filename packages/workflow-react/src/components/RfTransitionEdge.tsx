@@ -139,7 +139,7 @@ function RfTransitionEdgeImpl(props: EdgeProps<RfEdgeData>) {
                       fontSize: typography.badge.size,
                       fontWeight: typography.badge.weight,
                       letterSpacing: typography.badge.tracking,
-                      padding: "1px 6px",
+                      padding: "1px 4px",
                       borderRadius: 8,
                     }}
                   >
