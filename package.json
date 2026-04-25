@@ -4,7 +4,7 @@
   "private": true,
   "description": "Cyoda Workflow Editor monorepo",
   "license": "Apache-2.0",
-  "packageManager": "pnpm@9.0.0",
+  "packageManager": "pnpm@9.15.9",
   "pnpm": {
     "overrides": {
       "react": "^18.3.1",
