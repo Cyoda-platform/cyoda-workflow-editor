@@ -47,7 +47,7 @@
   "peerDependencies": {
     "monaco-editor": "^0.45.0 || ^0.46.0 || ^0.47.0 || ^0.48.0 || ^0.49.0 || ^0.50.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^19.2.5"
   },
   "peerDependenciesMeta": {
     "react": {
@@ -59,9 +59,9 @@
   },
   "devDependencies": {
     "@types/react": "^18.2.66",
-    "@types/react-dom": "^18.2.22",
+    "@types/react-dom": "^19.2.3",
     "monaco-editor": "^0.50.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^19.2.5"
   }
 }
