@@ -1,4 +1,4 @@
-# Release Guide
+# Cyoda Workflow Editor Release Guide
 
 Detailed release policy lives in
 [`ai/npm-release-mechanism.md`](ai/npm-release-mechanism.md).

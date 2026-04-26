@@ -18,7 +18,7 @@ npm install @cyoda/workflow-core @cyoda/workflow-graph @cyoda/workflow-layout @c
 ## Documentation
 
 See the
-[repository README](https://github.com/Cyoda-platform/workflow-editor#readme)
+[repository README](https://github.com/Cyoda-platform/cyoda-workflow-editor#readme)
 for package relationships, usage examples, and release notes.
 
 ## License

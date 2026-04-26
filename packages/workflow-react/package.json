@@ -10,12 +10,12 @@
   "types": "./dist/index.d.ts",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Cyoda-platform/workflow-editor.git",
+    "url": "git+https://github.com/Cyoda-platform/cyoda-workflow-editor.git",
     "directory": "packages/workflow-react"
   },
-  "homepage": "https://github.com/Cyoda-platform/workflow-editor#readme",
+  "homepage": "https://github.com/Cyoda-platform/cyoda-workflow-editor#readme",
   "bugs": {
-    "url": "https://github.com/Cyoda-platform/workflow-editor/issues"
+    "url": "https://github.com/Cyoda-platform/cyoda-workflow-editor/issues"
   },
   "exports": {
     ".": {

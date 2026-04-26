@@ -16,6 +16,9 @@ const privatePackages = [
   { name: "cyoda-workflow-editor", dir: "." },
   { name: "@cyoda/docs-embed-demo", dir: "apps/docs-embed-demo" },
 ];
+const repositoryUrl = "git+https://github.com/Cyoda-platform/cyoda-workflow-editor.git";
+const homepageUrl = "https://github.com/Cyoda-platform/cyoda-workflow-editor#readme";
+const bugsUrl = "https://github.com/Cyoda-platform/cyoda-workflow-editor/issues";
 
 function readJson(path) {
   return JSON.parse(readFileSync(resolve(rootDir, path), "utf8"));
@@ -65,10 +68,10 @@ for (const pkg of publicPackages) {
   assert(manifest.private !== true, `${pkg.name} must be publishable, not private.`);
   assert(manifest.license === "Apache-2.0", `${pkg.name} must use Apache-2.0.`);
   assert(manifest.publishConfig?.access === "public", `${pkg.name} must publish with public access.`);
-  assert(manifest.repository?.url === "git+https://github.com/Cyoda-platform/workflow-editor.git", `${pkg.name} repository.url must target the public repo.`);
+  assert(manifest.repository?.url === repositoryUrl, `${pkg.name} repository.url must target the public repo.`);
   assert(manifest.repository?.directory === pkg.dir, `${pkg.name} repository.directory must be ${pkg.dir}.`);
-  assert(manifest.homepage === "https://github.com/Cyoda-platform/workflow-editor#readme", `${pkg.name} homepage is invalid.`);
-  assert(manifest.bugs?.url === "https://github.com/Cyoda-platform/workflow-editor/issues", `${pkg.name} bugs.url is invalid.`);
+  assert(manifest.homepage === homepageUrl, `${pkg.name} homepage is invalid.`);
+  assert(manifest.bugs?.url === bugsUrl, `${pkg.name} bugs.url is invalid.`);
   assert(Array.isArray(manifest.files), `${pkg.name} must declare files for npm publish.`);
 
   for (const expected of ["dist", "README.md", "LICENSE"]) {

@@ -1,6 +1,6 @@
-Changesets release mechanism for the workflow-editor monorepo
+Changesets release mechanism for the Cyoda Workflow Editor monorepo
 
-A recipe for shipping the workflow-editor TypeScript/pnpm workspace monorepo to npm using the same discipline we use for Go releases:
+A recipe for shipping the Cyoda Workflow Editor TypeScript/pnpm workspace monorepo to npm using the same discipline we use for Go releases:
 
 * CI is the only publisher
 * No manual npm publish from laptops
@@ -9,7 +9,7 @@ A recipe for shipping the workflow-editor TypeScript/pnpm workspace monorepo to 
 * Changesets is the source of truth for what gets versioned and published
 * Git tags are outputs of a release, not the thing that decides package versions
 
-This is the correct model for workflow-editor because it has multiple publishable packages:
+This is the correct model for the Cyoda Workflow Editor repository because it has multiple publishable packages:
 
 * @cyoda/workflow-core
 * @cyoda/workflow-graph
@@ -74,7 +74,7 @@ The original doc assumes:
 * one tag like v1.2.3
 * tag must match root package version
 
-That is wrong for workflow-editor.
+That is wrong for the Cyoda Workflow Editor repository.
 
 In this monorepo:
 
@@ -83,7 +83,7 @@ In this monorepo:
 * some releases affect only one or two packages
 * the root package is private and must not drive published versioning
 
-So for workflow-editor:
+So for Cyoda Workflow Editor:
 
 * do not use “tag must equal root package version”
 * do not use root package.json as the authoritative published version
@@ -155,8 +155,8 @@ Use this when you want to bundle, stabilise, and test a release candidate.
 1. Cut a release branch:
 
 git checkout main && git pull
-git checkout -b release/2026-04-workflow-editor
-git push -u origin release/2026-04-workflow-editor
+git checkout -b release/2026-04-cyoda-workflow-editor
+git push -u origin release/2026-04-cyoda-workflow-editor
 
 2. Target stabilization/fix PRs at the release branch.
 3. Ensure every publishable change still carries a valid changeset.
@@ -213,7 +213,7 @@ This is the correct monorepo replacement for the original “tag v1.2.3-rc.1, th
 
 Release workflow
 
-For workflow-editor, the release workflow should be Changesets-driven, not “root tag matches root package version”.
+For Cyoda Workflow Editor, the release workflow should be Changesets-driven, not “root tag matches root package version”.
 
 Recommended trigger
 
@@ -257,7 +257,7 @@ Preflight checks
 
 Keep preflight. It is useful.
 
-For workflow-editor, preflight should validate:
+For Cyoda Workflow Editor, preflight should validate:
 
 * CI passes for the whole workspace
 * all changed public packages have valid package metadata
@@ -284,7 +284,7 @@ Recommended rule:
 
 If you really want semver-like tags, use them to mark the release batch, not to drive the package versions. For example:
 
-* workflow-editor-release-2026.04.24
+* cyoda-workflow-editor-release-2026.04.24
 
 Do not pretend that one repo tag equals all package versions.
 
@@ -314,7 +314,7 @@ That preserves the “no long-lived publish secret” goal from the original doc
 
 What to carry forward from the Go process
 
-Go mechanism	workflow-editor monorepo equivalent
+Go mechanism	Cyoda Workflow Editor monorepo equivalent
 Release branches	Optional release/* branches for stabilization
 Preflight checks	release-preflight.yml validating workspace release readiness
 Signed tags	Optional release-batch tags signed by maintainer/CI
@@ -325,7 +325,7 @@ GitHub Release notes	Generated from release PR / published batch
 
 ⸻
 
-First release checklist for workflow-editor
+First release checklist for Cyoda Workflow Editor
 
 * CI passes on main
 * All six publishable packages have correct name, files, main, exports, types, license, publishConfig.access
@@ -364,7 +364,7 @@ Add these to the repo guidance:
 
 Recommended release policy for this repo
 
-For workflow-editor, this is the cleanest practical policy:
+For Cyoda Workflow Editor, this is the cleanest practical policy:
 
 1. normal PRs land on main with changesets
 2. Changesets action maintains a version PR
@@ -373,4 +373,3 @@ For workflow-editor, this is the cleanest practical policy:
 5. use prerelease mode when you want RCs
 6. use release branches only when you need consolidation/stabilization
 7. use tags/releases as markers, not as the version authority
-

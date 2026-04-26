@@ -22,7 +22,7 @@ Round-tripping is byte-identical.
 ## Repository layout
 
 ```
-workflow-editor/
+cyoda-workflow-editor/
 ├── packages/
 │   ├── workflow-core      # Pure domain: parse, normalize, validate, patch, serialize
 │   ├── workflow-graph     # Projection: domain → nodes/edges/annotations
@@ -114,7 +114,7 @@ pnpm --filter @cyoda/docs-embed-demo test:visual     # diff vs baselines
 [Inference] Playwright browsers must be installed once via `pnpm exec
 playwright install chromium` before the visual commands succeed.
 
-## Release and publishing
+## Cyoda Workflow Editor release and publishing
 
 This monorepo uses [Changesets](https://github.com/changesets/changesets)
 for versioning and npm releases. Detailed release policy lives in
