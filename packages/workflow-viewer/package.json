@@ -1,6 +1,6 @@
 {
   "name": "@cyoda/workflow-viewer",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Slim read-only SVG renderer for Cyoda workflows.",
   "license": "Apache-2.0",
   "type": "module",
@@ -29,7 +29,11 @@
       "require": "./dist/theme/index.cjs"
     }
   },
-  "files": ["dist", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "publishConfig": {
     "access": "public",
     "provenance": true

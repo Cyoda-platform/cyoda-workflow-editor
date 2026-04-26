@@ -1,6 +1,6 @@
 {
   "name": "@cyoda/workflow-layout",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "ELK-based layout adapter for Cyoda workflow graphs (three presets, sync + worker).",
   "license": "Apache-2.0",
   "type": "module",
@@ -24,7 +24,11 @@
       "require": "./dist/index.cjs"
     }
   },
-  "files": ["dist", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "publishConfig": {
     "access": "public",
     "provenance": true
