@@ -19,9 +19,12 @@ export interface EdgeRoute {
   id: string;
   /** Full polyline, starting at the source edge, ending at the target edge. */
   points: EdgeWaypoint[];
-  /** Centroid hint for chip placement. */
+  /** Final centre point for chip placement. */
   labelX: number;
   labelY: number;
+  /** Estimated rendered label dimensions used by the layout collision pass. */
+  labelWidth: number;
+  labelHeight: number;
 }
 
 export interface LayoutResult {

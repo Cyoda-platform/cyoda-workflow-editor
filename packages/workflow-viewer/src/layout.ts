@@ -20,6 +20,8 @@ export interface EdgeRoute {
   points: EdgeWaypoint[];
   labelX: number;
   labelY: number;
+  labelWidth?: number;
+  labelHeight?: number;
 }
 
 export interface LayoutResult {

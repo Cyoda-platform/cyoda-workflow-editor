@@ -6,6 +6,8 @@ interface Props {
   edge: TransitionEdge;
   x: number;
   y: number;
+  width?: number;
+  height?: number;
   dimmed: boolean;
 }
 
@@ -24,7 +26,7 @@ function estimateWidth(text: string, fontSize: number): number {
   return Math.ceil(text.length * fontSize * 0.58);
 }
 
-export function EdgeLabel({ edge, x, y, dimmed }: Props) {
+export function EdgeLabel({ edge, x, y, width, height, dimmed }: Props) {
   const title = edge.summary.display;
   const badges = badgesFor(edge.summary, {
     manual: edge.manual,
@@ -40,9 +42,9 @@ export function EdgeLabel({ edge, x, y, dimmed }: Props) {
     badgeWidths.reduce((a, b) => a + b, 0) +
     Math.max(0, badges.length - 1) * BADGE_GAP;
 
-  const pillW = Math.max(titleW, badgesTotalW) + LABEL_PADDING_X * 2;
+  const pillW = width ?? Math.max(titleW, badgesTotalW) + LABEL_PADDING_X * 2;
   const hasBadges = badges.length > 0;
-  const pillH =
+  const pillH = height ??
     typography.edgeLabel.size +
     LABEL_PADDING_Y * 2 +
     (hasBadges ? BADGE_HEIGHT + BADGE_GAP : 0);

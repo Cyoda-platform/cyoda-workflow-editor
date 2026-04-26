@@ -59,6 +59,13 @@ interface ElkPoint {
   y: number;
 }
 
+interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 interface ElkSection {
   startPoint: ElkPoint;
   endPoint: ElkPoint;
@@ -306,6 +313,13 @@ function toLayoutResult(
 
   // ── Forward edges: use ELK routes + ELK label positions ──────────────────
   const routes = new Map<string, EdgeRoute>();
+  const labelSizes = new Map<string, { width: number; height: number }>();
+  for (const edge of graph.edges) {
+    if (edge.kind === "transition") {
+      labelSizes.set(edge.id, estimateLabelSize(edge as TransitionEdge));
+    }
+  }
+
   for (const e of out.edges) {
     const section = e.sections?.[0];
     if (!section) continue;
@@ -315,24 +329,17 @@ function toLayoutResult(
       section.endPoint,
     ];
 
-    // Prefer ELK's computed label centre; fall back to polyline midpoint.
-    let labelX: number;
-    let labelY: number;
-    const elkLabel = e.labels?.[0];
-    if (
-      elkLabel &&
-      typeof elkLabel.x === "number" &&
-      typeof elkLabel.y === "number"
-    ) {
-      labelX = elkLabel.x + elkLabel.width / 2;
-      labelY = elkLabel.y + elkLabel.height / 2;
-    } else {
-      const mid = midpointOf(points);
-      labelX = mid.x;
-      labelY = mid.y;
-    }
+    const labelSize = labelSizes.get(e.id) ?? { width: 40, height: 20 };
+    const anchor = longestSegmentCenter(points);
 
-    routes.set(e.id, { id: e.id, points, labelX, labelY });
+    routes.set(e.id, {
+      id: e.id,
+      points,
+      labelX: anchor.x,
+      labelY: anchor.y,
+      labelWidth: labelSize.width,
+      labelHeight: labelSize.height,
+    });
   }
 
   // ── Horizontal back-edges: replace ELK staircase with clean U-arc ────────
@@ -349,6 +356,7 @@ function toLayoutResult(
       const tgtCX = tgtPos.x + tgtPos.width / 2;
       const srcBottom = srcPos.y + srcPos.height;
       const tgtBottom = tgtPos.y + tgtPos.height;
+      const labelSize = labelSizes.get(edge.id) ?? { width: 40, height: 20 };
       routes.set(edge.id, {
         id: edge.id,
         points: [
@@ -359,6 +367,8 @@ function toLayoutResult(
         ],
         labelX: (srcCX + tgtCX) / 2,
         labelY: belowRow,
+        labelWidth: labelSize.width,
+        labelHeight: labelSize.height,
       });
     }
   }
@@ -375,6 +385,7 @@ function toLayoutResult(
       const leftX = pos.x + pos.width / 3;
       const rightX = pos.x + (pos.width * 2) / 3;
       const bottomY = pos.y + pos.height;
+      const labelSize = labelSizes.get(edge.id) ?? { width: 40, height: 20 };
       routes.set(edge.id, {
         id: edge.id,
         points: [
@@ -385,6 +396,8 @@ function toLayoutResult(
         ],
         labelX: (leftX + rightX) / 2,
         labelY: belowRow,
+        labelWidth: labelSize.width,
+        labelHeight: labelSize.height,
       });
     } else {
       // Right-side arc — doesn't interfere with DOWN flow.
@@ -392,6 +405,7 @@ function toLayoutResult(
       const bottomY = pos.y + (pos.height * 2) / 3;
       const rightX = pos.x + pos.width;
       const loopX = rightX + 28;
+      const labelSize = labelSizes.get(edge.id) ?? { width: 40, height: 20 };
       routes.set(edge.id, {
         id: edge.id,
         points: [
@@ -402,44 +416,183 @@ function toLayoutResult(
         ],
         labelX: loopX,
         labelY: (topY + bottomY) / 2,
+        labelWidth: labelSize.width,
+        labelHeight: labelSize.height,
       });
     }
   }
 
+  placeLabels(routes, positions, orientation);
+
   const nodeSize = { width: 144, height: 72 }; // fallback for bounds only
-  const width = out.width ?? computeBound(positions, "x", nodeSize.width);
-  const height = out.height ?? computeBound(positions, "y", nodeSize.height);
+  const width = Math.max(
+    out.width ?? 0,
+    computeBound(positions, "x", nodeSize.width),
+    computeLabelBound(routes, "x"),
+  );
+  const height = Math.max(
+    out.height ?? 0,
+    computeBound(positions, "y", nodeSize.height),
+    computeLabelBound(routes, "y"),
+  );
 
   return { positions, edges: routes, width, height, preset };
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function midpointOf(points: ElkPoint[]): ElkPoint {
+function longestSegmentCenter(points: ElkPoint[]): ElkPoint {
   if (points.length === 0) return { x: 0, y: 0 };
   if (points.length === 1) return points[0]!;
-  const segments: number[] = [];
-  let total = 0;
+  let bestLen = -1;
+  let best = points[0]!;
   for (let i = 1; i < points.length; i++) {
     const a = points[i - 1]!;
     const b = points[i]!;
-    const d = Math.hypot(b.x - a.x, b.y - a.y);
-    segments.push(d);
-    total += d;
-  }
-  const half = total / 2;
-  let acc = 0;
-  for (let i = 0; i < segments.length; i++) {
-    const d = segments[i]!;
-    if (acc + d >= half) {
-      const t = (half - acc) / d;
-      const a = points[i]!;
-      const b = points[i + 1]!;
-      return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (len > bestLen) {
+      bestLen = len;
+      best = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
     }
-    acc += d;
   }
-  return points[points.length - 1]!;
+  return best;
+}
+
+function placeLabels(
+  routes: Map<string, EdgeRoute>,
+  positions: Map<string, NodePosition>,
+  orientation: "vertical" | "horizontal",
+): void {
+  const nodeRects = Array.from(positions.values()).map((p) =>
+    inflate({ x: p.x, y: p.y, width: p.width, height: p.height }, 8),
+  );
+  const placed: Rect[] = [];
+  const directions =
+    orientation === "horizontal"
+      ? (["above", "below", "right", "left"] as const)
+      : (["right", "left", "above", "below"] as const);
+
+  for (const route of routes.values()) {
+    const anchor = longestSegmentCenter(route.points);
+    const endpointRects = endpointZones(route.points);
+    const clean = chooseLabelPosition(
+      anchor,
+      route.labelWidth,
+      route.labelHeight,
+      directions,
+      nodeRects,
+      placed,
+      endpointRects,
+    );
+    const fallback = clean ?? chooseLabelPosition(
+      anchor,
+      route.labelWidth,
+      route.labelHeight,
+      directions,
+      nodeRects,
+      [],
+      endpointRects,
+    );
+    const center = fallback ?? {
+      x: Math.max(route.labelWidth / 2, anchor.x),
+      y: Math.max(route.labelHeight / 2, anchor.y),
+    };
+    route.labelX = center.x;
+    route.labelY = center.y;
+    placed.push(rectAt(center, route.labelWidth, route.labelHeight));
+  }
+}
+
+function chooseLabelPosition(
+  anchor: ElkPoint,
+  width: number,
+  height: number,
+  directions: readonly ("above" | "below" | "left" | "right")[],
+  nodeRects: Rect[],
+  labelRects: Rect[],
+  endpointRects: Rect[],
+): ElkPoint | null {
+  const distances = [0, 8, 16, 28, 44, 64, 88];
+  for (const distance of distances) {
+    const candidates =
+      distance === 0
+        ? [anchor]
+        : directions.map((direction) =>
+            offsetAnchor(anchor, width, height, direction, distance),
+          );
+    for (const candidate of candidates) {
+      const rect = rectAt(candidate, width, height);
+      if (rect.x < 0 || rect.y < 0) continue;
+      if (intersectsAny(rect, nodeRects)) continue;
+      if (intersectsAny(rect, endpointRects)) continue;
+      if (intersectsAny(rect, labelRects)) continue;
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function offsetAnchor(
+  anchor: ElkPoint,
+  width: number,
+  height: number,
+  direction: "above" | "below" | "left" | "right",
+  distance: number,
+): ElkPoint {
+  switch (direction) {
+    case "above":
+      return { x: anchor.x, y: anchor.y - height / 2 - distance };
+    case "below":
+      return { x: anchor.x, y: anchor.y + height / 2 + distance };
+    case "left":
+      return { x: anchor.x - width / 2 - distance, y: anchor.y };
+    case "right":
+      return { x: anchor.x + width / 2 + distance, y: anchor.y };
+  }
+}
+
+function endpointZones(points: ElkPoint[]): Rect[] {
+  if (points.length === 0) return [];
+  const first = points[0]!;
+  const last = points[points.length - 1]!;
+  const size = 28;
+  return [first, last].map((p) => ({
+    x: p.x - size / 2,
+    y: p.y - size / 2,
+    width: size,
+    height: size,
+  }));
+}
+
+function rectAt(center: ElkPoint, width: number, height: number): Rect {
+  return {
+    x: center.x - width / 2,
+    y: center.y - height / 2,
+    width,
+    height,
+  };
+}
+
+function inflate(rect: Rect, amount: number): Rect {
+  return {
+    x: rect.x - amount,
+    y: rect.y - amount,
+    width: rect.width + amount * 2,
+    height: rect.height + amount * 2,
+  };
+}
+
+function intersectsAny(rect: Rect, others: Rect[]): boolean {
+  return others.some((other) => intersects(rect, other));
+}
+
+function intersects(a: Rect, b: Rect): boolean {
+  return (
+    a.x < b.x + b.width &&
+    a.x + a.width > b.x &&
+    a.y < b.y + b.height &&
+    a.y + a.height > b.y
+  );
 }
 
 function computeBound(
@@ -453,6 +606,18 @@ function computeBound(
     if (side > max) max = side;
   }
   return max + sizeFallback;
+}
+
+function computeLabelBound(routes: Map<string, EdgeRoute>, axis: "x" | "y"): number {
+  let max = 0;
+  for (const route of routes.values()) {
+    const side =
+      axis === "x"
+        ? route.labelX + route.labelWidth / 2
+        : route.labelY + route.labelHeight / 2;
+    if (side > max) max = side;
+  }
+  return max + 24;
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────

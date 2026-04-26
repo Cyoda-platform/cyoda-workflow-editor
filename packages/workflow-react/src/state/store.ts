@@ -107,8 +107,20 @@ export function useEditorStore(
     });
   }, []);
 
-  const silentReplace = useCallback((document: WorkflowEditorDocument) => {
+  const silentReplace = useCallback((
+    document: WorkflowEditorDocument,
+    options?: { preserveEditorState?: boolean },
+  ) => {
     const current = stateRef.current;
+    if (options?.preserveEditorState) {
+      setState({
+        ...current,
+        document,
+        activeWorkflow: reconcileActiveWorkflow(current.activeWorkflow, document),
+        selection: reconcileSelection(current.selection, document),
+      });
+      return;
+    }
     setState({
       ...current,
       document,

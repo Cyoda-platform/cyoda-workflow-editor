@@ -113,4 +113,40 @@ describe("WorkflowViewer", () => {
     render(<WorkflowViewer graph={graph} selectedId={xNode.id} />);
     expect(screen.getByTestId("state-node-x")).toBeTruthy();
   });
+
+  test("renders state node dimensions from supplied layout positions", () => {
+    const graph = projectFixture({
+      importMode: "MERGE",
+      workflows: [
+        {
+          version: "1.0",
+          name: "wf",
+          initialState: "wide",
+          active: true,
+          states: {
+            wide: { transitions: [] },
+          },
+        },
+      ],
+    });
+    const node = graph.nodes.find((n) => n.kind === "state" && n.stateCode === "wide");
+    if (!node) throw new Error("fixture missing wide");
+
+    render(
+      <WorkflowViewer
+        graph={graph}
+        layout={{
+          positions: new Map([
+            [node.id, { id: node.id, x: 10, y: 20, width: 220, height: 96 }],
+          ]),
+          width: 260,
+          height: 140,
+        }}
+      />,
+    );
+
+    const rect = screen.getByTestId("state-node-wide").querySelector("rect");
+    expect(rect?.getAttribute("width")).toBe("220");
+    expect(rect?.getAttribute("height")).toBe("96");
+  });
 });

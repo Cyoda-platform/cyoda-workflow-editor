@@ -21,6 +21,11 @@ export interface RfEdgeData {
   targetIsTerminal: boolean;
   /** ELK-computed polyline for this edge, if available. */
   routePoints?: { x: number; y: number }[];
+  /** Layout-computed label centre and size. */
+  labelX?: number;
+  labelY?: number;
+  labelWidth?: number;
+  labelHeight?: number;
   /** Other nodes' bounding boxes, for obstacle-aware nudging. */
   obstacles?: Rect[];
 }
@@ -40,7 +45,7 @@ function RfTransitionEdgeImpl(props: EdgeProps<RfEdgeData>) {
   if (!data) return null;
   const { edge, targetIsTerminal, routePoints, obstacles } = data;
 
-  const { path, labelX, labelY } = orthogonalEdgePath({
+  const { path, labelX: fallbackLabelX, labelY: fallbackLabelY } = orthogonalEdgePath({
     sourceX,
     sourceY,
     targetX,
@@ -50,6 +55,8 @@ function RfTransitionEdgeImpl(props: EdgeProps<RfEdgeData>) {
     routePoints,
     obstacles,
   });
+  const labelX = data.labelX ?? fallbackLabelX;
+  const labelY = data.labelY ?? fallbackLabelY;
 
   const color = laneColor(edge, { targetIsTerminal });
   const dash = laneDashArray(edge);
@@ -103,6 +110,7 @@ function RfTransitionEdgeImpl(props: EdgeProps<RfEdgeData>) {
             alignItems: "center",
             gap: 3,
             minWidth: 40,
+            width: data.labelWidth,
           }}
           className="nodrag nopan"
           data-testid={`rf-edge-label-${edge.id}`}

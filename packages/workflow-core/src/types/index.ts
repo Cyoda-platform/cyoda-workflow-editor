@@ -27,6 +27,7 @@ export type {
 export type { Severity, ValidationIssue } from "./validation.js";
 export type {
   WorkflowEditorDocument,
+  EditorViewport,
   EditorMetadata,
   SyntheticIdMap,
   StatePointer,

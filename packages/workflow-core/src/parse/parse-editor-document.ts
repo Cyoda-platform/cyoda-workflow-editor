@@ -64,7 +64,10 @@ export function parseEditorDocument(
     workflows: normalizedWorkflows,
   };
 
-  const meta = assignSyntheticIds(session);
+  const meta = assignSyntheticIds(
+    session,
+    outerResult.data.meta as WorkflowEditorDocument["meta"],
+  );
   const document: WorkflowEditorDocument = { session, meta };
   const issues = validateSemantics(session, document);
   const hasError = issues.some((i) => i.severity === "error");

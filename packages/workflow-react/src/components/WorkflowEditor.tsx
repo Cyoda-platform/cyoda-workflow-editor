@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Connection } from "reactflow";
 import type {
   DomainPatch,
+  EditorViewport,
   Workflow,
   WorkflowEditorDocument,
 } from "@cyoda/workflow-core";
@@ -65,7 +66,7 @@ export function WorkflowEditor({
   const readOnly = state.mode === "viewer";
   const derived = useMemo(
     () => deriveFromDocument(state.document),
-    [state.document.meta.revision, state.document],
+    [state.document.session, state.document.meta.ids],
   );
 
   const dispatch = (patch: DomainPatch) => actions.dispatch(patch);
@@ -157,6 +158,44 @@ export function WorkflowEditor({
     return wf.states[pendingConnect.fromState] ?? null;
   }, [pendingConnect, state.document]);
 
+  const orientation = layoutOptions?.orientation ?? "vertical";
+  const savedViewport =
+    state.activeWorkflow
+      ? state.document.meta.workflowUi[state.activeWorkflow]?.viewports?.[orientation]
+      : undefined;
+
+  const handleViewportChange = useCallback(
+    (viewport: EditorViewport) => {
+      const workflow = state.activeWorkflow;
+      if (!workflow) return;
+      const current = state.document.meta.workflowUi[workflow] ?? {};
+      const existing = current.viewports?.[orientation];
+      const nextViewport = normalizeViewport(viewport);
+      if (existing && sameViewport(existing, nextViewport)) return;
+
+      actions.silentReplace(
+        {
+          session: state.document.session,
+          meta: {
+            ...state.document.meta,
+            workflowUi: {
+              ...state.document.meta.workflowUi,
+              [workflow]: {
+                ...current,
+                viewports: {
+                  ...(current.viewports ?? {}),
+                  [orientation]: nextViewport,
+                },
+              },
+            },
+          },
+        },
+        { preserveEditorState: true },
+      );
+    },
+    [actions, orientation, state.activeWorkflow, state.document],
+  );
+
   return (
     <I18nContext.Provider value={mergedMessages}>
       <div
@@ -204,7 +243,9 @@ export function WorkflowEditor({
               activeWorkflow={state.activeWorkflow}
               selection={state.selection}
               layoutOptions={layoutOptions}
+              savedViewport={savedViewport}
               onSelectionChange={(sel: Selection) => actions.setSelection(sel)}
+              onViewportChange={handleViewportChange}
               onConnect={handleConnect}
               readOnly={readOnly}
             />
@@ -240,4 +281,16 @@ export function WorkflowEditor({
       </div>
     </I18nContext.Provider>
   );
+}
+
+function normalizeViewport(viewport: EditorViewport): EditorViewport {
+  return {
+    x: Math.round(viewport.x * 100) / 100,
+    y: Math.round(viewport.y * 100) / 100,
+    zoom: Math.round(viewport.zoom * 1000) / 1000,
+  };
+}
+
+function sameViewport(a: EditorViewport, b: EditorViewport): boolean {
+  return a.x === b.x && a.y === b.y && a.zoom === b.zoom;
 }

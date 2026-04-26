@@ -174,6 +174,68 @@ function posSnapshot(positions: Map<string, { x: number; y: number; width: numbe
   return byCode;
 }
 
+function labelRect(route: { labelX: number; labelY: number; labelWidth: number; labelHeight: number }) {
+  return {
+    x: route.labelX - route.labelWidth / 2,
+    y: route.labelY - route.labelHeight / 2,
+    width: route.labelWidth,
+    height: route.labelHeight,
+  };
+}
+
+function intersects(
+  a: { x: number; y: number; width: number; height: number },
+  b: { x: number; y: number; width: number; height: number },
+  tolerance = 0,
+) {
+  return (
+    a.x + tolerance < b.x + b.width &&
+    a.x + a.width > b.x + tolerance &&
+    a.y + tolerance < b.y + b.height &&
+    a.y + a.height > b.y + tolerance
+  );
+}
+
+function pointNearRectBoundary(
+  point: { x: number; y: number },
+  rect: { x: number; y: number; width: number; height: number },
+  tolerance = 1,
+) {
+  const withinX = point.x >= rect.x - tolerance && point.x <= rect.x + rect.width + tolerance;
+  const withinY = point.y >= rect.y - tolerance && point.y <= rect.y + rect.height + tolerance;
+  const onLeft = Math.abs(point.x - rect.x) <= tolerance && withinY;
+  const onRight = Math.abs(point.x - (rect.x + rect.width)) <= tolerance && withinY;
+  const onTop = Math.abs(point.y - rect.y) <= tolerance && withinX;
+  const onBottom = Math.abs(point.y - (rect.y + rect.height)) <= tolerance && withinX;
+  return onLeft || onRight || onTop || onBottom;
+}
+
+async function expectCleanLabelGeometry(json: unknown, orientation: "vertical" | "horizontal" = "vertical") {
+  const graph = project(json);
+  const result = await layoutGraph(graph, { preset: "configuratorReadable", orientation });
+  const nodeRects = [...result.positions.values()];
+  for (const edge of graph.edges) {
+    if (edge.kind !== "transition") continue;
+    const route = result.edges.get(edge.id);
+    expect(route, `missing route for ${edge.label}`).toBeTruthy();
+    expect(route!.labelWidth).toBeGreaterThan(0);
+    expect(route!.labelHeight).toBeGreaterThan(0);
+    const rect = labelRect(route!);
+    for (const node of nodeRects) {
+      expect(
+        intersects(rect, node, 2),
+        `label ${edge.label} overlaps node ${node.id}`,
+      ).toBe(false);
+    }
+    const source = result.positions.get(edge.sourceId);
+    const target = result.positions.get(edge.targetId);
+    if (source && target && route!.points.length >= 2) {
+      expect(pointNearRectBoundary(route!.points[0]!, source, 1)).toBe(true);
+      expect(pointNearRectBoundary(route!.points[route!.points.length - 1]!, target, 1)).toBe(true);
+    }
+  }
+}
+
 
 // ─── existing correctness tests ───────────────────────────────────────────────
 
@@ -233,7 +295,7 @@ describe("layoutGraph", () => {
     expect(result.edges.size).toBe(0);
   });
 
-  test("horizontal back-edge label sits below all nodes", async () => {
+  test("horizontal back-edge route uses a rail below all nodes", async () => {
     const graph = project(minimal);
     const result = await layoutGraph(graph, { orientation: "horizontal" });
     const maxNodeBottom = Math.max(...[...result.positions.values()].map((p) => p.y + p.height));
@@ -242,7 +304,8 @@ describe("layoutGraph", () => {
       const sp = result.positions.get(edge.sourceId);
       const tp = result.positions.get(edge.targetId);
       if (!sp || !tp || sp.x <= tp.x) continue;
-      expect(result.edges.get(edge.id)!.labelY).toBeGreaterThan(maxNodeBottom);
+      const route = result.edges.get(edge.id)!;
+      expect(Math.max(...route.points.map((p) => p.y))).toBeGreaterThan(maxNodeBottom);
     }
   });
 
@@ -316,7 +379,13 @@ describe("regression: 4-state workflow (vertical)", () => {
     for (const r of result.edges.values()) {
       expect(Number.isFinite(r.labelX)).toBe(true);
       expect(Number.isFinite(r.labelY)).toBe(true);
+      expect(r.labelWidth).toBeGreaterThan(0);
+      expect(r.labelHeight).toBeGreaterThan(0);
     }
+  });
+
+  test("labels avoid node rectangles and endpoints touch rendered bounds", async () => {
+    await expectCleanLabelGeometry(fourState, "vertical");
   });
 
   test("back-edge (reactivate) has a route with a finite label position", async () => {
@@ -344,7 +413,7 @@ describe("regression: 4-state workflow (horizontal)", () => {
     }
   });
 
-  test("back-edge (reactivate) label is below all nodes in horizontal mode", async () => {
+  test("back-edge (reactivate) route uses a rail below all nodes in horizontal mode", async () => {
     const graph = project(fourState);
     const result = await layoutGraph(graph, { preset: "configuratorReadable", orientation: "horizontal" });
     const maxBottom = Math.max(...[...result.positions.values()].map((p) => p.y + p.height));
@@ -352,7 +421,11 @@ describe("regression: 4-state workflow (horizontal)", () => {
       (e) => e.kind === "transition" && e.label === "reactivate",
     )!;
     const route = result.edges.get(reactivate.id)!;
-    expect(route.labelY).toBeGreaterThan(maxBottom);
+    expect(Math.max(...route.points.map((p) => p.y))).toBeGreaterThan(maxBottom);
+  });
+
+  test("horizontal labels avoid node rectangles and endpoints touch rendered bounds", async () => {
+    await expectCleanLabelGeometry(fourState, "horizontal");
   });
 });
 
@@ -376,7 +449,13 @@ describe("regression: branching graph", () => {
       expect(route, `missing route for ${edge.label}`).toBeTruthy();
       expect(Number.isFinite(route!.labelX)).toBe(true);
       expect(Number.isFinite(route!.labelY)).toBe(true);
+      expect(route!.labelWidth).toBeGreaterThan(0);
+      expect(route!.labelHeight).toBeGreaterThan(0);
     }
+  });
+
+  test("dense labels avoid node rectangles where possible", async () => {
+    await expectCleanLabelGeometry(branching, "vertical");
   });
 
   test("initial state (start) is in the topmost layer", async () => {
@@ -389,7 +468,7 @@ describe("regression: branching graph", () => {
     );
   });
 
-  test("horizontal branching: back-edges have labels below all nodes", async () => {
+  test("horizontal branching: back-edges use routes below all nodes", async () => {
     const graph = project(branching);
     const result = await layoutGraph(graph, { preset: "configuratorReadable", orientation: "horizontal" });
     const maxBottom = Math.max(...[...result.positions.values()].map((p) => p.y + p.height));
@@ -399,7 +478,7 @@ describe("regression: branching graph", () => {
       const tp = result.positions.get(edge.targetId);
       if (!sp || !tp || sp.x <= tp.x) continue;
       const route = result.edges.get(edge.id)!;
-      expect(route.labelY).toBeGreaterThan(maxBottom);
+      expect(Math.max(...route.points.map((p) => p.y))).toBeGreaterThan(maxBottom);
     }
   });
 });

@@ -33,7 +33,10 @@ export interface EditorState {
 export interface EditorActions {
   dispatch(patch: DomainPatch, summary?: string): void;
   /** Apply a patch without recording undo (e.g. after an external JSON load). */
-  silentReplace(document: WorkflowEditorDocument): void;
+  silentReplace(
+    document: WorkflowEditorDocument,
+    options?: { preserveEditorState?: boolean },
+  ): void;
   undo(): void;
   redo(): void;
   setSelection(sel: Selection): void;

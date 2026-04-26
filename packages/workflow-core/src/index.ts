@@ -9,6 +9,7 @@ export type {
   EdgeAnchor,
   EdgeAnchorPair,
   EditorMetadata,
+  EditorViewport,
   EntityFieldHintProvider,
   EntityIdentity,
   ExecutionMode,

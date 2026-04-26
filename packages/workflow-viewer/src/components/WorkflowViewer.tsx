@@ -152,6 +152,8 @@ export function WorkflowViewer({
               edge={edge}
               x={labelPos.midX}
               y={labelPos.midY}
+              width={route?.labelWidth}
+              height={route?.labelHeight}
               dimmed={isDimmed}
             />
           );

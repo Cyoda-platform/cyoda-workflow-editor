@@ -25,8 +25,8 @@ export function StateNodeView({
   onHoverLeave,
 }: Props) {
   const palette = paletteFor(node);
-  const { width, height, radius, strokeWidth, terminalInset, terminalInnerRadius } =
-    geometry.node;
+  const { radius, strokeWidth, terminalInset, terminalInnerRadius } = geometry.node;
+  const { width, height } = position;
   const isTerminal = node.role === "terminal" || node.role === "initial-terminal";
   const isInitialTerminal = node.role === "initial-terminal";
   const category = roleCategoryLabel(node);

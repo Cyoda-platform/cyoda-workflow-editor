@@ -6,6 +6,12 @@ export interface WorkflowEditorDocument {
   meta: EditorMetadata;
 }
 
+export interface EditorViewport {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
 export interface EditorMetadata {
   revision: number;
   ids: SyntheticIdMap;
@@ -79,4 +85,9 @@ export interface WorkflowUiMeta {
    * to heuristic defaults computed at projection time.
    */
   edgeAnchors?: Record<string, EdgeAnchorPair>;
+  /**
+   * Canvas viewport snapshots keyed by layout orientation. These are editor-only
+   * affordances and are never serialised into exported Cyoda JSON.
+   */
+  viewports?: Partial<Record<"vertical" | "horizontal", EditorViewport>>;
 }

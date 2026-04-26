@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   ConnectionMode,
@@ -6,6 +6,8 @@ import {
   MiniMap,
   ReactFlow,
   ReactFlowProvider,
+  useReactFlow,
+  type Viewport,
   type Connection,
   type Edge,
   type Node,
@@ -34,14 +36,16 @@ export interface CanvasProps {
   activeWorkflow: string | null;
   selection: Selection;
   layoutOptions?: LayoutOptions;
+  savedViewport?: Viewport;
   onSelectionChange: (sel: Selection) => void;
+  onViewportChange?: (viewport: Viewport) => void;
   onConnect?: (connection: Connection) => void;
   readOnly?: boolean;
 }
 
 function toRfNodes(
   graph: GraphDocument,
-  layout: LayoutResult | null,
+  layout: LayoutResult,
   activeWorkflow: string | null,
   issuesByNode: Map<string, ValidationIssue[]>,
   selection: Selection,
@@ -50,15 +54,15 @@ function toRfNodes(
     .filter((n): n is GraphStateNode => n.kind === "state")
     .filter((n) => !activeWorkflow || n.workflow === activeWorkflow)
     .map((n) => {
-      const pos = layout?.positions.get(n.id);
+      const pos = layout.positions.get(n.id);
       const nodeIssues = issuesByNode.get(n.id) ?? [];
       const hasError = nodeIssues.some((i) => i.severity === "error");
       const hasWarning = nodeIssues.some((i) => i.severity === "warning");
       const selected =
         selection?.kind === "state" && selection.nodeId === n.id;
-      // Use the same size estimator as the layout engine so the node's
-      // rendered footprint matches its ELK bounding box.
-      const size = estimateNodeSize(n.stateCode);
+      const size = pos
+        ? { width: pos.width, height: pos.height }
+        : estimateNodeSize(n.stateCode);
       return {
         id: n.id,
         type: "stateNode",
@@ -74,7 +78,7 @@ function toRfNodes(
 
 function toRfEdges(
   graph: GraphDocument,
-  layout: LayoutResult | null,
+  layout: LayoutResult,
   activeWorkflow: string | null,
   selection: Selection,
   orientation: "vertical" | "horizontal",
@@ -85,15 +89,13 @@ function toRfEdges(
       .map((n) => [n.id, n]),
   );
   // Precompute obstacle bounding boxes once per render.
-  const allObstacles = layout
-    ? Array.from(layout.positions.values()).map((p) => ({
-        id: p.id,
-        x: p.x,
-        y: p.y,
-        width: p.width,
-        height: p.height,
-      }))
-    : [];
+  const allObstacles = Array.from(layout.positions.values()).map((p) => ({
+    id: p.id,
+    x: p.x,
+    y: p.y,
+    width: p.width,
+    height: p.height,
+  }));
   return graph.edges
     .filter((e): e is TransitionEdge => e.kind === "transition")
     .filter((e) => !activeWorkflow || e.workflow === activeWorkflow)
@@ -103,7 +105,8 @@ function toRfEdges(
         target?.role === "terminal" || target?.role === "initial-terminal";
       const selected =
         selection?.kind === "transition" && selection.transitionUuid === e.id;
-      const routePoints = layout?.edges?.get(e.id)?.points;
+      const route = layout.edges.get(e.id);
+      const routePoints = route?.points;
       const obstacles = allObstacles.filter(
         (o) => o.id !== e.sourceId && o.id !== e.targetId,
       );
@@ -114,7 +117,6 @@ function toRfEdges(
       const isHorizontalBackEdge =
         !e.isSelf &&
         orientation === "horizontal" &&
-        layout !== null &&
         (layout.positions.get(e.sourceId)?.x ?? 0) >
           (layout.positions.get(e.targetId)?.x ?? 0);
 
@@ -129,6 +131,10 @@ function toRfEdges(
           edge: e,
           targetIsTerminal: !!targetIsTerminal,
           routePoints,
+          labelX: route?.labelX,
+          labelY: route?.labelY,
+          labelWidth: route?.labelWidth,
+          labelHeight: route?.labelHeight,
           obstacles,
         },
         selected,
@@ -185,11 +191,14 @@ function CanvasInner({
   activeWorkflow,
   selection,
   layoutOptions,
+  savedViewport,
   onSelectionChange,
+  onViewportChange,
   onConnect,
   readOnly,
 }: CanvasProps) {
   const [layout, setLayout] = useState<LayoutResult | null>(null);
+  const rf = useReactFlow();
 
   // Extract primitive fields so the effect dep array is stable even when the
   // consumer passes a new object literal on every parent render.
@@ -203,26 +212,90 @@ function CanvasInner({
     () => ({ preset, orientation, elk: elkOverrides, nodeSize, pinned }),
     // elkOverrides / nodeSize / pinned are objects; they are rarely supplied
     // in practice, so a reference change there is an intentional re-layout.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [preset, orientation, elkOverrides, nodeSize, pinned],
   );
 
+  // Track which orientation was in effect when each layout was triggered, so
+  // that the fitView guard can tell whether layout changed due to an
+  // orientation switch (which requires a refit) vs. a graph edit (no refit).
+  const orientationAtLayoutRef = useRef(orientation);
+
   useEffect(() => {
     let cancelled = false;
+    orientationAtLayoutRef.current = orientation;
     layoutGraph(graph, effectiveOpts).then((result) => {
       if (!cancelled) setLayout(result);
     });
     return () => {
       cancelled = true;
     };
-  }, [graph, effectiveOpts]);
+  }, [graph, effectiveOpts, orientation]);
+
+  // ── Viewport fit ────────────────────────────────────────────────────────────
+  //
+  // Rules:
+  //  1. Never fit while layout is still pending — nodes would be at (0,0).
+  //  2. Fit once on the first completed layout (initial load / reload).
+  //  3. Refit when the graph orientation changes (new layout = different bounds).
+  //  4. Do NOT refit on subsequent graph edits — preserve the user's zoom/pan.
+  //  5. Cap maxZoom at 1.2 so small graphs do not blow up absurdly.
+  //
+  // A requestAnimationFrame defers the call until React Flow has committed the
+  // new node positions to the DOM, which is required for correct bounds.
+
+  const lastHandledViewportKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!layout) return;
+    const viewportKey = `${activeWorkflow ?? "__all__"}:${orientationAtLayoutRef.current}`;
+    if (lastHandledViewportKeyRef.current === viewportKey) return;
+
+    const rafId = requestAnimationFrame(() => {
+      if (savedViewport) {
+        void rf.setViewport(savedViewport, { duration: 0 });
+      } else {
+        const stateCount = graph.nodes.filter(
+          (node): node is GraphStateNode =>
+            node.kind === "state" &&
+            (!activeWorkflow || node.workflow === activeWorkflow),
+        ).length;
+        const fitOptions =
+          stateCount <= 6
+            ? { padding: 0.12, maxZoom: 1 }
+            : { padding: 0.12 };
+        void rf.fitView(fitOptions);
+      }
+      lastHandledViewportKeyRef.current = viewportKey;
+    });
+    return () => cancelAnimationFrame(rafId);
+  }, [activeWorkflow, graph.nodes, layout, rf, savedViewport]);
+
+  // ── Derived RF data ─────────────────────────────────────────────────────────
+  //
+  // Critically: nodes and edges are EMPTY until the layout result is available.
+  //
+  // Before layout resolves, every node position is (0,0). React Flow would
+  // then compute edge handles at the origin, causing all edge-label overlays to
+  // pile up in the top-left corner — and fitView would zoom into empty space.
+  // Deferring until layout is ready avoids both problems with no user-visible
+  // cost (ELK typically resolves in < 150 ms for typical workflow sizes).
 
   const issuesByNode = useMemo(() => groupIssuesByNode(graph, issues), [graph, issues]);
+
   const nodes = useMemo(
-    () => toRfNodes(graph, layout, activeWorkflow, issuesByNode, selection),
+    () =>
+      layout
+        ? toRfNodes(graph, layout, activeWorkflow, issuesByNode, selection)
+        : [],
     [graph, layout, activeWorkflow, issuesByNode, selection],
   );
+
   const edges = useMemo(
-    () => toRfEdges(graph, layout, activeWorkflow, selection, orientation),
+    () =>
+      layout
+        ? toRfEdges(graph, layout, activeWorkflow, selection, orientation)
+        : [],
     [graph, layout, activeWorkflow, selection, orientation],
   );
 
@@ -256,12 +329,15 @@ function CanvasInner({
         nodesDraggable={!readOnly}
         nodesConnectable={!readOnly}
         elementsSelectable
-        fitView
-        fitViewOptions={{ padding: 0.12 }}
+        // fitView is intentionally absent — handled imperatively after layout.
+        // See the fitView useEffect above for the reasoning.
         snapToGrid
         snapGrid={[16, 16]}
-        minZoom={0.25}
+        minZoom={0.1}
         maxZoom={4}
+        onMoveEnd={(_, viewport) => {
+          if (layout) onViewportChange?.(viewport);
+        }}
       >
         <Background />
         <Controls showInteractive={false} />
