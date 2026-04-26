@@ -69,8 +69,12 @@ function toRfNodes(
         data: { node: n, hasError, hasWarning, size },
         position: pos ? { x: pos.x, y: pos.y } : { x: 0, y: 0 },
         selected,
-        // Tell React Flow the exact pixel size so its internal hit-testing
-        // and handle placement match the rendered node.
+        // width/height on the node object tells ReactFlow the dimensions
+        // before ResizeObserver fires. fitView's nodesInitialized guard
+        // (nodes.every(n => n.width && n.height)) requires these to be set
+        // or it returns false and leaves the viewport at {x:0, y:0, zoom:1}.
+        width: size.width,
+        height: size.height,
         style: { width: size.width, height: size.height },
       };
     });
@@ -254,6 +258,7 @@ function CanvasInner({
     const rafId = requestAnimationFrame(() => {
       if (savedViewport) {
         void rf.setViewport(savedViewport, { duration: 0 });
+        lastHandledViewportKeyRef.current = viewportKey;
       } else {
         const stateCount = graph.nodes.filter(
           (node): node is GraphStateNode =>
@@ -264,9 +269,12 @@ function CanvasInner({
           stateCount <= 6
             ? { padding: 0.12, maxZoom: 1 }
             : { padding: 0.12 };
-        void rf.fitView(fitOptions);
+        // fitView returns false if nodes are not yet initialized in the
+        // ReactFlow store (nodesInitialized guard). Only mark the key as
+        // handled when the fit actually ran, so a retry happens if needed.
+        const fitted = rf.fitView(fitOptions);
+        if (fitted) lastHandledViewportKeyRef.current = viewportKey;
       }
-      lastHandledViewportKeyRef.current = viewportKey;
     });
     return () => cancelAnimationFrame(rafId);
   }, [activeWorkflow, graph.nodes, layout, rf, savedViewport]);

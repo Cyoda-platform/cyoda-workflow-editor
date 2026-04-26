@@ -5,7 +5,7 @@ import type { WorkflowEditorDocument } from "@cyoda/workflow-core";
 import { parseImportPayload } from "@cyoda/workflow-core";
 
 const { fitView, latestOnMoveEnd, setViewport } = vi.hoisted(() => ({
-  fitView: vi.fn(),
+  fitView: vi.fn().mockReturnValue(true),
   latestOnMoveEnd: {
     current: undefined as
       | undefined
