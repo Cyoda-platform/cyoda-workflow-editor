@@ -13,6 +13,11 @@ pnpm --filter @cyoda/docs-embed-demo dev
 
 Dev server listens on http://localhost:5173.
 
+Routes:
+
+- `http://localhost:5173/` or `http://localhost:5173/examples` for the workflow playground page
+- `http://localhost:5173/embed` for the original slim viewer embed example
+
 ## Embed recipe
 
 ```tsx
@@ -25,7 +30,7 @@ const graph = projectToGraph(document);
 
 <div style={{ height: 600 }}>
   <WorkflowViewer graph={graph} onSelectionChange={(id) => console.log(id)} />
-</div>
+</div>;
 ```
 
 ### What the viewer gives you

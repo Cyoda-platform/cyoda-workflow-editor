@@ -1,0 +1,75 @@
+{
+  "version": "1.0",
+  "name": "DocumentLifecycleWorkflow",
+  "desc": "Workflow derived from the supplied diagram: new -> active -> approved -> archived, with validate and notify processors, an age>30d archive criterion, and a manual reactivate path from archived to active.",
+  "initialState": "new",
+  "active": true,
+  "states": {
+    "new": {
+      "transitions": [
+        {
+          "name": "to_active",
+          "next": "active",
+          "manual": false,
+          "disabled": false,
+          "processors": [
+            {
+              "type": "externalized",
+              "name": "validate",
+              "executionMode": "SYNC",
+              "config": {
+                "attachEntity": true
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "active": {
+      "transitions": [
+        {
+          "name": "to_approved",
+          "next": "approved",
+          "manual": true,
+          "disabled": false,
+          "processors": [
+            {
+              "type": "externalized",
+              "name": "notify",
+              "executionMode": "ASYNC_NEW_TX",
+              "config": {
+                "attachEntity": true
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "approved": {
+      "transitions": [
+        {
+          "name": "to_archived",
+          "next": "archived",
+          "manual": false,
+          "disabled": false,
+          "criterion": {
+            "type": "lifecycle",
+            "field": "creationDate",
+            "operation": "LESS_OR_EQUAL",
+            "value": "NOW_MINUS_30D"
+          }
+        }
+      ]
+    },
+    "archived": {
+      "transitions": [
+        {
+          "name": "reactivate",
+          "next": "active",
+          "manual": true,
+          "disabled": false
+        }
+      ]
+    }
+  }
+}
