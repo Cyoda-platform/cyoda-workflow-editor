@@ -44,6 +44,9 @@ export interface CanvasProps {
   onSelectionChange: (sel: Selection) => void;
   onViewportChange?: (viewport: Viewport) => void;
   onConnect?: (connection: Connection) => void;
+  onReconnect?: (edge: Edge<RfEdgeData>, connection: Connection) => void;
+  onNodesDelete?: (nodes: Node<RfStateNodeData>[]) => void;
+  onEdgesDelete?: (edges: Edge<RfEdgeData>[]) => void;
   /** Called once per completed drag with the node UUID and its final position. */
   onNodeDragStop?: (nodeId: string, x: number, y: number) => void;
   /**
@@ -168,6 +171,8 @@ function toRfEdges(
           liveSourcePosition: sourcePosition,
           liveTargetPosition: targetPosition,
         },
+        reconnectable: true,
+        interactionWidth: selected ? 28 : 18,
         selected,
       };
     });
@@ -287,6 +292,9 @@ function CanvasInner({
   onSelectionChange,
   onViewportChange,
   onConnect,
+  onReconnect,
+  onNodesDelete,
+  onEdgesDelete,
   onNodeDragStop,
   layoutKey = 0,
   readOnly,
@@ -411,7 +419,9 @@ function CanvasInner({
   }, [baseNodes, draggingIds]);
 
   const handleNodesChange = useCallback((changes: NodeChange[]) => {
-    setNodes((currentNodes) => applyNodeChanges(changes, currentNodes));
+    const nonRemoveChanges = changes.filter((change) => change.type !== "remove");
+    if (nonRemoveChanges.length === 0) return;
+    setNodes((currentNodes) => applyNodeChanges(nonRemoveChanges, currentNodes));
   }, []);
 
   const displayPositions = useMemo(() => {
@@ -500,12 +510,17 @@ function CanvasInner({
         onEdgeClick={onEdgeClick}
         onPaneClick={() => onSelectionChange(null)}
         onConnect={readOnly ? undefined : onConnect}
+        onReconnect={readOnly ? undefined : onReconnect}
+        onNodesDelete={readOnly ? undefined : onNodesDelete}
+        onEdgesDelete={readOnly ? undefined : onEdgesDelete}
         onNodeDragStart={readOnly ? undefined : handleNodeDragStart}
         onNodeDrag={readOnly ? undefined : handleNodeDrag}
         onNodeDragStop={readOnly ? undefined : handleNodeDragStop}
         connectionMode={ConnectionMode.Loose}
         nodesDraggable={!readOnly}
         nodesConnectable={!readOnly}
+        edgesUpdatable={!readOnly}
+        deleteKeyCode={null}
         elementsSelectable
         // fitView is intentionally absent — handled imperatively after layout.
         // See the fitView useEffect above for the reasoning.

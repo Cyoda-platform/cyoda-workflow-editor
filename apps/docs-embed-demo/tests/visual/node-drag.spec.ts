@@ -42,3 +42,38 @@ test("editor drag keeps connected edge geometry attached without a follow-up cli
   expect(afterBox?.x).toBeLessThan(box!.x - 40);
   await expect.poll(async () => changedPathCount(before, await pathData(page))).toBeGreaterThan(0);
 });
+
+test("editor anchor dropdowns move the selected transition path without exporting metadata", async ({ page }) => {
+  await page.goto("/editor");
+  await expect(page.getByTestId("editor-page")).toBeVisible();
+  await expect.poll(async () => (await pathData(page)).filter(Boolean).length).toBeGreaterThan(0);
+
+  const firstEdge = edgePaths(page).first();
+  const before = await pathData(page);
+  await firstEdge.click({ force: true });
+
+  await expect(page.getByTestId("inspector-transition-source-anchor")).toBeVisible();
+  await page.getByTestId("inspector-transition-source-anchor").selectOption("right");
+  await expect.poll(async () => changedPathCount(before, await pathData(page))).toBeGreaterThan(0);
+
+  const afterSource = await pathData(page);
+  await page.getByTestId("inspector-transition-target-anchor").selectOption("left");
+  await expect.poll(async () => changedPathCount(afterSource, await pathData(page))).toBeGreaterThan(0);
+
+  await expect(page.getByTestId("editor-page")).not.toContainText("edgeAnchors");
+});
+
+test("editor drag-connect preserves the drawn source-to-target direction", async ({ page }) => {
+  await page.goto("/editor");
+  await expect(page.getByTestId("editor-page")).toBeVisible();
+
+  const sourceHandle = page.locator('[data-testid="rf-state-new"] [data-id$="-bottom-source"]').first();
+  const targetHandle = page.locator('[data-testid="rf-state-active"] [data-id$="-top-target"]').first();
+  await expect(sourceHandle).toBeVisible();
+  await expect(targetHandle).toBeVisible();
+
+  await sourceHandle.dragTo(targetHandle, { force: true });
+
+  await expect(page.getByTestId("dragconnect-name")).toBeVisible();
+  await expect(page.getByTestId("modal-frame")).toContainText("new → active");
+});

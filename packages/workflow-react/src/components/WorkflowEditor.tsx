@@ -1,9 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Connection } from "reactflow";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { Connection, Edge } from "reactflow";
 import {
   applyPatch,
   type DomainPatch,
+  type EdgeAnchor,
+  type EdgeAnchorPair,
   type EditorViewport,
+  type PatchTransaction,
+  PatchConflictError,
   type Workflow,
   type WorkflowEditorDocument,
   type WorkflowUiMeta,
@@ -22,6 +26,7 @@ import { DeleteStateModal } from "../modals/DeleteStateModal.js";
 import { DragConnectModal } from "../modals/DragConnectModal.js";
 import { AddStateModal } from "../modals/AddStateModal.js";
 import { CommentNode } from "./CommentNode.js";
+import type { RfEdgeData } from "./RfTransitionEdge.js";
 
 /** Controls which chrome elements the editor shell renders. All fields default to `true`. */
 export interface ChromeOptions {
@@ -63,6 +68,13 @@ export interface WorkflowEditorProps {
 interface PendingDelete {
   workflow: string;
   stateCode: string;
+}
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  const tag = target.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
 }
 
 function defaultNewWorkflow(existing: string[]): Workflow {
@@ -117,7 +129,13 @@ export function WorkflowEditor({
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [pendingConnect, setPendingConnect] = useState<PendingConnect | null>(null);
   const [pendingAddState, setPendingAddState] = useState(false);
+  const [reconnectError, setReconnectError] = useState<string | null>(null);
   const [layoutKey, setLayoutKey] = useState(0);
+  const selectionRef = useRef<Selection>(state.selection);
+
+  useEffect(() => {
+    selectionRef.current = state.selection;
+  }, [state.selection]);
 
   useEffect(() => {
     onChange?.(state.document);
@@ -153,7 +171,7 @@ export function WorkflowEditor({
   const readOnly = state.mode === "viewer";
   const derived = useMemo(
     () => deriveFromDocument(state.document),
-    [state.document.session, state.document.meta.ids],
+    [state.document],
   );
 
   const dispatch = (patch: DomainPatch) => actions.dispatch(patch);
@@ -248,6 +266,27 @@ export function WorkflowEditor({
     if (resolved) setPendingConnect(resolved);
   };
 
+  const handleReconnect = useCallback(
+    (edge: Edge<RfEdgeData>, connection: Connection) => {
+      setReconnectError(null);
+      const tx = buildReconnectTransaction(state.document, edge, connection);
+      if (!tx.ok) {
+        if (tx.reason) setReconnectError(tx.reason);
+        return;
+      }
+      try {
+        actions.dispatchTransaction(tx.transaction);
+      } catch (error) {
+        if (error instanceof PatchConflictError) {
+          setReconnectError(error.message);
+          return;
+        }
+        throw error;
+      }
+    },
+    [actions, state.document],
+  );
+
   const confirmConnect = useCallback(
     (name: string) => {
       if (!pendingConnect) return;
@@ -280,6 +319,14 @@ export function WorkflowEditor({
   const workflows = state.document.session.workflows;
   const showTabs = workflows.length > 1 || state.mode !== "viewer";
 
+  const handleSelectionChange = useCallback(
+    (selection: Selection) => {
+      selectionRef.current = selection;
+      actions.setSelection(selection);
+    },
+    [actions],
+  );
+
   const confirmAddState = useCallback(
     (name: string) => {
       const workflow = state.activeWorkflow;
@@ -300,6 +347,7 @@ export function WorkflowEditor({
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
       if (anyModalOpen) return;
+      if (isTypingTarget(e.target)) return;
       const mod = e.ctrlKey || e.metaKey;
       if (mod && (e.key === "z" || e.key === "Z") && !e.shiftKey) {
         if (!readOnly && state.undoStack.length > 0) {
@@ -351,6 +399,54 @@ export function WorkflowEditor({
       handleResetLayout,
     ],
   );
+
+  const handleDeleteKeyDownCapture = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (anyModalOpen || readOnly || isTypingTarget(e.target)) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key !== "Backspace" && e.key !== "Delete") return;
+
+      const selection = selectionRef.current;
+      if (selection?.kind === "state") {
+        e.preventDefault();
+        e.stopPropagation();
+        requestDeleteState(selection.workflow, selection.stateCode);
+        return;
+      }
+      if (selection?.kind === "transition") {
+        e.preventDefault();
+        e.stopPropagation();
+        dispatch({ op: "removeTransition", transitionUuid: selection.transitionUuid });
+      }
+    },
+    [anyModalOpen, readOnly, state.selection],
+  );
+
+  useEffect(() => {
+    const handleDocumentDeleteKeyDown = (event: KeyboardEvent) => {
+      if (anyModalOpen || readOnly || isTypingTarget(event.target)) return;
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      if (event.key !== "Backspace" && event.key !== "Delete") return;
+
+      const selection = selectionRef.current;
+      if (selection?.kind === "state") {
+        event.preventDefault();
+        event.stopPropagation();
+        requestDeleteState(selection.workflow, selection.stateCode);
+        return;
+      }
+      if (selection?.kind === "transition") {
+        event.preventDefault();
+        event.stopPropagation();
+        dispatch({ op: "removeTransition", transitionUuid: selection.transitionUuid });
+      }
+    };
+
+    document.addEventListener("keydown", handleDocumentDeleteKeyDown, true);
+    return () => {
+      document.removeEventListener("keydown", handleDocumentDeleteKeyDown, true);
+    };
+  }, [anyModalOpen, readOnly, dispatch]);
 
   const pendingConnectState = useMemo(() => {
     if (!pendingConnect) return null;
@@ -416,6 +512,7 @@ export function WorkflowEditor({
           outline: "none",
         }}
         data-testid="workflow-editor"
+        onKeyDownCapture={handleDeleteKeyDownCapture}
         onKeyDown={handleKeyDown}
         tabIndex={-1}
       >
@@ -458,9 +555,20 @@ export function WorkflowEditor({
               selection={state.selection}
               layoutOptions={effectiveLayoutOptions}
               savedViewport={savedViewport}
-              onSelectionChange={(sel: Selection) => actions.setSelection(sel)}
+              onSelectionChange={handleSelectionChange}
               onViewportChange={handleViewportChange}
               onConnect={handleConnect}
+              onReconnect={handleReconnect}
+              onNodesDelete={(nodes) => {
+                if (readOnly || anyModalOpen) return;
+                const node = nodes[0]?.data?.node;
+                if (node) requestDeleteState(node.workflow, node.stateCode);
+              }}
+              onEdgesDelete={(edges) => {
+                if (readOnly || anyModalOpen) return;
+                const edge = edges[0];
+                if (edge) dispatch({ op: "removeTransition", transitionUuid: edge.id });
+              }}
               onNodeDragStop={!readOnly ? handleNodeDragStop : undefined}
               layoutKey={layoutKey}
               readOnly={readOnly}
@@ -468,6 +576,28 @@ export function WorkflowEditor({
               showControls={chrome?.controls !== false}
             />
             {/* Canvas comments overlay */}
+            {reconnectError && (
+              <div
+                role="alert"
+                data-testid="reconnect-error"
+                style={{
+                  position: "absolute",
+                  top: 12,
+                  left: 12,
+                  zIndex: 20,
+                  maxWidth: 360,
+                  padding: "8px 10px",
+                  borderRadius: 6,
+                  border: "1px solid #FCA5A5",
+                  background: "#FEF2F2",
+                  color: "#991B1B",
+                  fontSize: 12,
+                  boxShadow: "0 2px 8px rgba(15,23,42,0.12)",
+                }}
+              >
+                {reconnectError}
+              </div>
+            )}
             {state.activeWorkflow && (() => {
               const comments = state.document.meta.workflowUi[state.activeWorkflow!]?.comments;
               if (!comments) return null;
@@ -502,7 +632,7 @@ export function WorkflowEditor({
             issues={derived.issues}
             readOnly={readOnly}
             onDispatch={dispatch}
-            onSelectionChange={actions.setSelection}
+            onSelectionChange={handleSelectionChange}
             onRequestDeleteState={requestDeleteState}
           />
           )}
@@ -539,6 +669,195 @@ export function WorkflowEditor({
       </div>
     </I18nContext.Provider>
   );
+}
+
+type ReconnectBuildResult =
+  | { ok: true; transaction: PatchTransaction }
+  | { ok: false; reason?: string };
+
+function buildReconnectTransaction(
+  doc: WorkflowEditorDocument,
+  edge: Edge<RfEdgeData>,
+  connection: Connection,
+): ReconnectBuildResult {
+  const ptr = doc.meta.ids.transitions[edge.id];
+  if (!ptr) return { ok: false };
+  const wf = doc.session.workflows.find((workflow) => workflow.name === ptr.workflow);
+  if (!wf) return { ok: false };
+  const transition = transitionForUuid(doc, edge.id);
+  if (!transition) return { ok: false };
+
+  const sourcePtr = connection.source ? doc.meta.ids.states[connection.source] : undefined;
+  const targetPtr = connection.target ? doc.meta.ids.states[connection.target] : undefined;
+  if (!sourcePtr || !targetPtr) return { ok: false };
+  if (sourcePtr.workflow !== ptr.workflow || targetPtr.workflow !== ptr.workflow) {
+    return { ok: false, reason: "Transitions can only be reconnected within the same workflow." };
+  }
+
+  const fromState = ptr.state;
+  const toState = sourcePtr.state;
+  const oldTarget = transition.next;
+  const nextTarget = targetPtr.state;
+  const sourceChanged = toState !== fromState;
+  const targetChanged = nextTarget !== oldTarget;
+  const priorAnchors =
+    doc.meta.workflowUi[ptr.workflow]?.edgeAnchors?.[edge.id] ?? undefined;
+  const nextAnchors = normalizeAnchorPair({
+    ...(priorAnchors ?? {}),
+    source: anchorFromHandle(connection.sourceHandle) ?? priorAnchors?.source,
+    target: anchorFromHandle(connection.targetHandle) ?? priorAnchors?.target,
+  });
+  const anchorsChanged = !sameAnchors(priorAnchors, nextAnchors ?? undefined);
+
+  if (!sourceChanged && !targetChanged && !anchorsChanged) return { ok: false };
+
+  if (
+    sourceChanged &&
+    wf.states[toState]?.transitions.some((t) => t.name === transition.name)
+  ) {
+    return {
+      ok: false,
+      reason: `Transition "${transition.name}" already exists in state "${toState}".`,
+    };
+  }
+
+  if (!sourceChanged) {
+    const patches: DomainPatch[] = [];
+    const inverses: DomainPatch[] = [];
+    if (targetChanged) {
+      patches.push({ op: "updateTransition", transitionUuid: edge.id, updates: { next: nextTarget } });
+      inverses.unshift({ op: "updateTransition", transitionUuid: edge.id, updates: { next: oldTarget } });
+    }
+    if (anchorsChanged) {
+      patches.push({ op: "setEdgeAnchors", transitionUuid: edge.id, anchors: nextAnchors });
+      inverses.unshift({
+        op: "setEdgeAnchors",
+        transitionUuid: edge.id,
+        anchors: priorAnchors ? { ...priorAnchors } : null,
+      });
+    }
+    return {
+      ok: true,
+      transaction: {
+        summary: `Reconnect transition "${transition.name}"`,
+        patches,
+        inverses,
+        selectionAfter: { kind: "transition", transitionUuid: edge.id },
+      },
+    };
+  }
+
+  const movePatch: DomainPatch = {
+    op: "moveTransitionSource",
+    workflow: ptr.workflow,
+    fromState,
+    toState,
+    transitionName: transition.name,
+  };
+  const afterMove = applyPatch(doc, movePatch);
+  const movedUuid = transitionUuidByName(afterMove, ptr.workflow, toState, transition.name);
+  if (!movedUuid) return { ok: false };
+
+  const patches: DomainPatch[] = [movePatch];
+  const inverses: DomainPatch[] = [
+    {
+      op: "moveTransitionSource",
+      workflow: ptr.workflow,
+      fromState: toState,
+      toState: fromState,
+      transitionName: transition.name,
+    },
+    {
+      op: "setEdgeAnchors",
+      transitionUuid: edge.id,
+      anchors: priorAnchors ? { ...priorAnchors } : null,
+    },
+  ];
+
+  if (targetChanged) {
+    patches.push({
+      op: "updateTransition",
+      transitionUuid: movedUuid,
+      updates: { next: nextTarget },
+    });
+    inverses.unshift({
+      op: "updateTransition",
+      transitionUuid: movedUuid,
+      updates: { next: oldTarget },
+    });
+  }
+  const shouldWriteMovedAnchors = nextAnchors !== null;
+  if (shouldWriteMovedAnchors) {
+    patches.push({ op: "setEdgeAnchors", transitionUuid: movedUuid, anchors: nextAnchors });
+    inverses.unshift({
+      op: "setEdgeAnchors",
+      transitionUuid: movedUuid,
+      anchors: null,
+    });
+  }
+
+  return {
+    ok: true,
+    transaction: {
+      summary: `Move transition "${transition.name}" to "${toState}"`,
+      patches,
+      inverses,
+      selectionAfter: { kind: "transition", transitionUuid: movedUuid },
+    },
+  };
+}
+
+function anchorFromHandle(handle: string | null | undefined): EdgeAnchor | undefined {
+  return handle === "top" || handle === "right" || handle === "bottom" || handle === "left"
+    ? handle
+    : undefined;
+}
+
+function normalizeAnchorPair(anchors: EdgeAnchorPair): EdgeAnchorPair | null {
+  const out: EdgeAnchorPair = {};
+  if (anchors.source) out.source = anchors.source;
+  if (anchors.target) out.target = anchors.target;
+  return out.source || out.target ? out : null;
+}
+
+function sameAnchors(a: EdgeAnchorPair | undefined, b: EdgeAnchorPair | undefined): boolean {
+  return a?.source === b?.source && a?.target === b?.target;
+}
+
+function transitionForUuid(doc: WorkflowEditorDocument, uuid: string) {
+  const loc = transitionLocation(doc, uuid);
+  if (!loc) return undefined;
+  const wf = doc.session.workflows.find((workflow) => workflow.name === loc.workflow);
+  return wf?.states[loc.state]?.transitions[loc.index];
+}
+
+function transitionLocation(
+  doc: WorkflowEditorDocument,
+  uuid: string,
+): { workflow: string; state: string; index: number } | null {
+  const ptr = doc.meta.ids.transitions[uuid];
+  if (!ptr) return null;
+  const ordered = Object.entries(doc.meta.ids.transitions)
+    .filter(([, candidate]) => candidate.workflow === ptr.workflow && candidate.state === ptr.state)
+    .map(([candidateUuid]) => candidateUuid);
+  const index = ordered.indexOf(uuid);
+  return index >= 0 ? { workflow: ptr.workflow, state: ptr.state, index } : null;
+}
+
+function transitionUuidByName(
+  doc: WorkflowEditorDocument,
+  workflow: string,
+  state: string,
+  transitionName: string,
+): string | null {
+  const wf = doc.session.workflows.find((candidate) => candidate.name === workflow);
+  const transitions = wf?.states[state]?.transitions ?? [];
+  const index = transitions.findIndex((transition) => transition.name === transitionName);
+  if (index < 0) return null;
+  const ordered = Object.entries(doc.meta.ids.transitions)
+    .filter(([, ptr]) => ptr.workflow === workflow && ptr.state === state)
+    .map(([uuid]) => uuid);
+  return ordered[index] ?? null;
 }
 
 function normalizeViewport(viewport: EditorViewport): EditorViewport {

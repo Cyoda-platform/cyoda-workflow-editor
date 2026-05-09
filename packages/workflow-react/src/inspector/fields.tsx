@@ -1,4 +1,4 @@
-import type { ChangeEvent, ReactNode } from "react";
+import { useEffect, useState, type ChangeEvent, type ReactNode } from "react";
 
 /** Minimal uncontrolled field wrappers used by the per-selection forms. */
 export function TextField({
@@ -16,17 +16,24 @@ export function TextField({
   placeholder?: string;
   testId?: string;
 }) {
+  const [draft, setDraft] = useState(value);
+
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+
   return (
     <label style={rowStyle}>
       <span style={labelStyle}>{label}</span>
       <input
         type="text"
-        defaultValue={value}
+        value={draft}
         disabled={disabled}
         placeholder={placeholder}
         data-testid={testId}
+        onChange={(e) => setDraft(e.target.value)}
         onBlur={(e: ChangeEvent<HTMLInputElement>) => {
-          if (e.target.value !== value) onCommit(e.target.value);
+          if (draft !== value) onCommit(e.target.value);
         }}
         onKeyDown={(e) => {
           if (e.key === "Enter") (e.target as HTMLInputElement).blur();

@@ -158,6 +158,21 @@ function AnchorHandle({
 
   return (
     <>
+      {/* Render target below source so drag gestures begin from the source handle
+          when both overlap in Loose mode. Otherwise React Flow treats a
+          source-to-target drag as target-to-source and reverses the edge. */}
+      <Handle
+        id={side}
+        type="target"
+        position={position}
+        style={{
+          background: "transparent",
+          border: "none",
+          borderRadius: 0,
+          width: isVertical ? "80%" : 16,
+          height: isVertical ? 16 : "80%",
+        }}
+      />
       {/* Large transparent hit area spanning most of the edge for forgiving drops. */}
       <Handle
         id={side}

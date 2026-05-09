@@ -116,6 +116,12 @@ export function EditorShowcasePage() {
           <div>
             <h2>Workflow editor</h2>
             <p className="muted-text">The canvas is mounted inside a fixed-height shell to make interactions and screenshots stable.</p>
+            <p className="muted-text">
+              Try selecting a transition, changing its source/target anchor dropdowns,
+              or dragging an edge endpoint to another handle/state. The exported JSON
+              below should only change for real source/target state changes; visual
+              anchors remain editor metadata.
+            </p>
           </div>
         </div>
         <div className="editor-shell" data-testid="workflow-editor-shell">

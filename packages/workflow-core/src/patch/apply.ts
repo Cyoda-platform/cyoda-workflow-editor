@@ -232,7 +232,8 @@ export function applyPatch(
   });
 
   const nextMeta = assignSyntheticIds(nextSession, doc.meta);
-  const cleanedWorkflowUi = cleanupWorkflowUi(nextMeta.workflowUi, nextSession);
+  preserveMovedTransitionUuid(doc, patch, nextSession, nextMeta);
+  const cleanedWorkflowUi = cleanupWorkflowUi(nextMeta.workflowUi, nextSession, nextMeta);
   return {
     session: nextSession,
     meta: { ...nextMeta, workflowUi: cleanedWorkflowUi, revision: doc.meta.revision + 1 },
@@ -384,6 +385,79 @@ function applyRemoveComment(
   };
 }
 
+function preserveMovedTransitionUuid(
+  priorDoc: WorkflowEditorDocument,
+  patch: DomainPatch,
+  nextSession: WorkflowSession,
+  nextMeta: WorkflowEditorDocument["meta"],
+): void {
+  if (patch.op !== "moveTransitionSource") return;
+  const oldUuid = transitionUuidByName(
+    priorDoc,
+    patch.workflow,
+    patch.fromState,
+    patch.transitionName,
+  );
+  if (!oldUuid) return;
+  const newUuid = transitionUuidByNameInSession(
+    nextSession,
+    nextMeta,
+    patch.workflow,
+    patch.toState,
+    patch.transitionName,
+  );
+  if (!newUuid || newUuid === oldUuid) return;
+  const newPtr = nextMeta.ids.transitions[newUuid];
+  if (!newPtr) return;
+
+  delete nextMeta.ids.transitions[newUuid];
+  nextMeta.ids.transitions[oldUuid] = {
+    ...newPtr,
+    transitionUuid: oldUuid,
+  };
+
+  for (const processorPtr of Object.values(nextMeta.ids.processors)) {
+    if (processorPtr.transitionUuid === newUuid) {
+      processorPtr.transitionUuid = oldUuid;
+    }
+  }
+  for (const criterionPtr of Object.values(nextMeta.ids.criteria)) {
+    const host = criterionPtr.host;
+    if (
+      (host.kind === "transition" || host.kind === "processorConfig") &&
+      host.transitionUuid === newUuid
+    ) {
+      host.transitionUuid = oldUuid;
+    }
+  }
+}
+
+function transitionUuidByName(
+  doc: WorkflowEditorDocument,
+  workflow: string,
+  state: string,
+  transitionName: string,
+): string | null {
+  return transitionUuidByNameInSession(doc.session, doc.meta, workflow, state, transitionName);
+}
+
+function transitionUuidByNameInSession(
+  session: WorkflowSession,
+  meta: WorkflowEditorDocument["meta"],
+  workflow: string,
+  state: string,
+  transitionName: string,
+): string | null {
+  const wf = session.workflows.find((candidate) => candidate.name === workflow);
+  const transitions = wf?.states[state]?.transitions ?? [];
+  const index = transitions.findIndex((transition) => transition.name === transitionName);
+  if (index < 0) return null;
+  const ordered = Object.entries(meta.ids.transitions)
+    .filter(([, ptr]) => ptr.workflow === workflow && ptr.state === state)
+    .map(([uuid]) => uuid);
+  return ordered[index] ?? null;
+}
+
 function renameStateCascading(wf: Workflow, from: string, to: string): void {
   if (!(from in wf.states) || from === to) return;
   wf.states[to] = wf.states[from]!;
@@ -456,9 +530,21 @@ function locateProcessor(
 function cleanupWorkflowUi(
   workflowUi: Record<string, WorkflowUiMeta>,
   session: WorkflowSession,
+  meta?: WorkflowEditorDocument["meta"],
 ): Record<string, WorkflowUiMeta> {
   const wfNames = new Set(session.workflows.map((w) => w.name));
   const result: Record<string, WorkflowUiMeta> = {};
+  const validTransitionIdsByWorkflow = new Map<string, Set<string>>();
+  if (meta) {
+    for (const [uuid, ptr] of Object.entries(meta.ids.transitions)) {
+      let set = validTransitionIdsByWorkflow.get(ptr.workflow);
+      if (!set) {
+        set = new Set<string>();
+        validTransitionIdsByWorkflow.set(ptr.workflow, set);
+      }
+      set.add(uuid);
+    }
+  }
 
   for (const [wfName, ui] of Object.entries(workflowUi)) {
     if (!wfNames.has(wfName)) continue; // workflow deleted — drop its entire UI meta
@@ -502,7 +588,18 @@ function cleanupWorkflowUi(
       comments = Object.keys(cleanComments).length > 0 ? cleanComments : undefined;
     }
 
-    result[wfName] = { ...ui, layout, comments };
+    let edgeAnchors = ui.edgeAnchors;
+    if (edgeAnchors && meta) {
+      const validTransitionIds = validTransitionIdsByWorkflow.get(wfName) ?? new Set<string>();
+      const cleanAnchors = Object.fromEntries(
+        Object.entries(edgeAnchors).filter(([transitionUuid]) =>
+          validTransitionIds.has(transitionUuid),
+        ),
+      );
+      edgeAnchors = Object.keys(cleanAnchors).length > 0 ? cleanAnchors : undefined;
+    }
+
+    result[wfName] = { ...ui, layout, comments, edgeAnchors };
   }
 
   return result;

@@ -26,7 +26,12 @@ const { rfCallbacks } = vi.hoisted(() => ({
     onNodeDragStop:  undefined as undefined | ((e: unknown, node: unknown) => void),
     onNodesChange: undefined as undefined | ((changes: unknown[]) => void),
     latestNodes: undefined as undefined | { id: string; position: { x: number; y: number } }[],
-    latestEdges: undefined as undefined | { id: string; data?: { routePoints?: unknown; labelX?: unknown; labelY?: unknown } }[],
+    latestEdges: undefined as undefined | {
+      id: string;
+      sourceHandle?: string;
+      targetHandle?: string;
+      data?: { routePoints?: unknown; labelX?: unknown; labelY?: unknown };
+    }[],
   },
 }));
 
@@ -87,6 +92,7 @@ vi.mock("reactflow", () => {
     onNodeDragStart,
     onNodeDrag,
     onNodeDragStop,
+    onEdgeClick,
   }: {
     nodes?: MockNode[];
     edges?: MockEdge[];
@@ -95,6 +101,7 @@ vi.mock("reactflow", () => {
     onNodeDragStart?: (e: unknown, node: unknown) => void;
     onNodeDrag?: (e: unknown, node: unknown) => void;
     onNodeDragStop?:  (e: unknown, node: unknown) => void;
+    onEdgeClick?: (e: unknown, edge: MockEdge) => void;
   }) => {
     rfCallbacks.onNodesChange = onNodesChange;
     rfCallbacks.onNodeDragStart = onNodeDragStart;
@@ -114,18 +121,23 @@ vi.mock("reactflow", () => {
             const sourcePoint = handlePoint(source, edge.sourceHandle, "source");
             const targetPoint = handlePoint(target, edge.targetHandle, "target");
             return (
-              <EdgeComponent
+              <g
                 key={edge.id}
-                id={edge.id}
-                sourceX={sourcePoint.x}
-                sourceY={sourcePoint.y}
-                targetX={targetPoint.x}
-                targetY={targetPoint.y}
-                sourcePosition={handlePosition(edge.sourceHandle, "source")}
-                targetPosition={handlePosition(edge.targetHandle, "target")}
-                data={edge.data}
-                selected={edge.selected}
-              />
+                data-testid={`rf-edge-hit-${edge.id}`}
+                onClick={(event) => onEdgeClick?.(event, edge)}
+              >
+                <EdgeComponent
+                  id={edge.id}
+                  sourceX={sourcePoint.x}
+                  sourceY={sourcePoint.y}
+                  targetX={targetPoint.x}
+                  targetY={targetPoint.y}
+                  sourcePosition={handlePosition(edge.sourceHandle, "source")}
+                  targetPosition={handlePosition(edge.targetHandle, "target")}
+                  data={edge.data}
+                  selected={edge.selected}
+                />
+              </g>
             );
           })}
         </svg>
@@ -368,6 +380,58 @@ describe("edge routing during drag", () => {
     const pathAfterStop = screen.getByTestId(`rf-edge-path-${transitionUuid}`).getAttribute("d");
     expect(pathAfterStop).toBeTruthy();
     expect(pathAfterStop).not.toEqual(initialPath);
+  });
+});
+
+// ── Tests: anchor dropdowns update rendered geometry ────────────────────────
+
+describe("transition anchor dropdowns", () => {
+  it("updates sourceHandle and rendered edge path when source anchor changes", async () => {
+    const doc = fixture(TWO_STATE_CONNECTED);
+    const transitionUuid = Object.keys(doc.meta.ids.transitions)[0]!;
+
+    vi.mocked(layoutGraph).mockResolvedValue(buildLayout(doc));
+
+    render(<WorkflowEditor document={doc} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`rf-edge-path-${transitionUuid}`).getAttribute("d")).toBeTruthy();
+    });
+    const initialPath = screen.getByTestId(`rf-edge-path-${transitionUuid}`).getAttribute("d");
+
+    fireEvent.click(screen.getByTestId(`rf-edge-hit-${transitionUuid}`));
+    const sourceAnchor = await screen.findByTestId("inspector-transition-source-anchor");
+    fireEvent.change(sourceAnchor, { target: { value: "right" } });
+
+    await waitFor(() => {
+      const edge = rfCallbacks.latestEdges?.find((candidate) => candidate.id === transitionUuid);
+      expect(edge?.sourceHandle).toBe("right");
+      expect(screen.getByTestId(`rf-edge-path-${transitionUuid}`).getAttribute("d")).not.toEqual(initialPath);
+    });
+  });
+
+  it("updates targetHandle and rendered edge path when target anchor changes", async () => {
+    const doc = fixture(TWO_STATE_CONNECTED);
+    const transitionUuid = Object.keys(doc.meta.ids.transitions)[0]!;
+
+    vi.mocked(layoutGraph).mockResolvedValue(buildLayout(doc));
+
+    render(<WorkflowEditor document={doc} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`rf-edge-path-${transitionUuid}`).getAttribute("d")).toBeTruthy();
+    });
+    const initialPath = screen.getByTestId(`rf-edge-path-${transitionUuid}`).getAttribute("d");
+
+    fireEvent.click(screen.getByTestId(`rf-edge-hit-${transitionUuid}`));
+    const targetAnchor = await screen.findByTestId("inspector-transition-target-anchor");
+    fireEvent.change(targetAnchor, { target: { value: "left" } });
+
+    await waitFor(() => {
+      const edge = rfCallbacks.latestEdges?.find((candidate) => candidate.id === transitionUuid);
+      expect(edge?.targetHandle).toBe("left");
+      expect(screen.getByTestId(`rf-edge-path-${transitionUuid}`).getAttribute("d")).not.toEqual(initialPath);
+    });
   });
 });
 
