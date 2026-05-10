@@ -15,6 +15,8 @@ export interface RfStateNodeData {
   hasWarning: boolean;
   /** Computed by the layout engine. When absent the token defaults are used. */
   size?: { width: number; height: number };
+  /** When true, expose 8 visible anchor points instead of the default 4. */
+  denseAnchors?: boolean;
 }
 
 /**
@@ -22,7 +24,7 @@ export interface RfStateNodeData {
  * chrome. Only interaction affordances (handles, selection ring) differ.
  */
 function RfStateNodeImpl({ data, selected }: NodeProps<RfStateNodeData>) {
-  const { node, hasError, hasWarning, size } = data;
+  const { node, hasError, hasWarning, size, denseAnchors } = data;
   const palette = paletteFor(node);
   const { radius, strokeWidth } = geometry.node;
   const width = size?.width ?? geometry.node.width;
@@ -57,11 +59,22 @@ function RfStateNodeImpl({ data, selected }: NodeProps<RfStateNodeData>) {
       }}
       data-testid={`rf-state-${node.stateCode}`}
     >
-      {ANCHOR_SIDES.map(({ side, position }) => (
+      {(denseAnchors ? CARDINAL_ANCHORS : SPLIT_ANCHORS).map((anchor) => (
+        <AnchorHandle
+          key={`compat-${anchor.side}`}
+          side={anchor.side}
+          position={anchor.position}
+          inset={anchor.inset}
+          color={palette.border}
+          hidden
+        />
+      ))}
+      {(denseAnchors ? SPLIT_ANCHORS : CARDINAL_ANCHORS).map(({ side, position, inset }) => (
         <AnchorHandle
           key={side}
           side={side}
           position={position}
+          inset={inset}
           color={palette.border}
         />
       ))}
@@ -118,26 +131,60 @@ function RfStateNodeImpl({ data, selected }: NodeProps<RfStateNodeData>) {
   );
 }
 
-const ANCHOR_SIDES: ReadonlyArray<{
-  side: "top" | "right" | "bottom" | "left";
+type AnchorSide =
+  | "top"
+  | "right"
+  | "bottom"
+  | "left"
+  | "top-left"
+  | "top-right"
+  | "right-top"
+  | "right-bottom"
+  | "bottom-left"
+  | "bottom-right"
+  | "left-top"
+  | "left-bottom";
+
+type AnchorSpec = {
+  side: AnchorSide;
   position: Position;
-}> = [
-  { side: "top", position: Position.Top },
-  { side: "right", position: Position.Right },
-  { side: "bottom", position: Position.Bottom },
-  { side: "left", position: Position.Left },
+  inset: number;
+};
+
+const CARDINAL_ANCHORS: ReadonlyArray<AnchorSpec> = [
+  { side: "top", position: Position.Top, inset: 0.5 },
+  { side: "right", position: Position.Right, inset: 0.5 },
+  { side: "bottom", position: Position.Bottom, inset: 0.5 },
+  { side: "left", position: Position.Left, inset: 0.5 },
+];
+
+const SPLIT_ANCHORS: ReadonlyArray<AnchorSpec> = [
+  { side: "top-left", position: Position.Top, inset: 0.28 },
+  { side: "top-right", position: Position.Top, inset: 0.72 },
+  { side: "right-top", position: Position.Right, inset: 0.28 },
+  { side: "right-bottom", position: Position.Right, inset: 0.72 },
+  { side: "bottom-left", position: Position.Bottom, inset: 0.28 },
+  { side: "bottom-right", position: Position.Bottom, inset: 0.72 },
+  { side: "left-top", position: Position.Left, inset: 0.28 },
+  { side: "left-bottom", position: Position.Left, inset: 0.72 },
 ];
 
 function AnchorHandle({
   side,
   position,
+  inset,
   color,
+  hidden = false,
 }: {
-  side: "top" | "right" | "bottom" | "left";
+  side: AnchorSide;
   position: Position;
+  inset: number;
   color: string;
+  hidden?: boolean;
 }) {
-  const isVertical = position === Position.Top || position === Position.Bottom;
+  const handleStyle = hidden
+    ? compatibilityHandleStyle(position, inset)
+    : visibleHandleStyle(position, inset, side.includes("-"));
 
   // Small visible dot centered on the edge, non-interactive.
   const dotStyle: CSSProperties = {
@@ -147,13 +194,13 @@ function AnchorHandle({
     background: color,
     borderRadius: "50%",
     pointerEvents: "none",
-    ...(side === "top"
-      ? { top: -4, left: "calc(50% - 4px)" }
-      : side === "bottom"
-        ? { bottom: -4, left: "calc(50% - 4px)" }
-        : side === "left"
-          ? { left: -4, top: "calc(50% - 4px)" }
-          : { right: -4, top: "calc(50% - 4px)" }),
+    ...(position === Position.Top
+      ? { top: -4, left: `calc(${inset * 100}% - 4px)` }
+      : position === Position.Bottom
+        ? { bottom: -4, left: `calc(${inset * 100}% - 4px)` }
+        : position === Position.Left
+          ? { left: -4, top: `calc(${inset * 100}% - 4px)` }
+          : { right: -4, top: `calc(${inset * 100}% - 4px)` }),
   };
 
   return (
@@ -165,30 +212,61 @@ function AnchorHandle({
         id={side}
         type="target"
         position={position}
-        style={{
-          background: "transparent",
-          border: "none",
-          borderRadius: 0,
-          width: isVertical ? "80%" : 16,
-          height: isVertical ? 16 : "80%",
-        }}
+        style={handleStyle}
       />
       {/* Large transparent hit area spanning most of the edge for forgiving drops. */}
       <Handle
         id={side}
         type="source"
         position={position}
-        style={{
-          background: "transparent",
-          border: "none",
-          borderRadius: 0,
-          width: isVertical ? "80%" : 16,
-          height: isVertical ? 16 : "80%",
-        }}
+        style={handleStyle}
       />
-      <div style={dotStyle} />
+      {!hidden && <div style={dotStyle} />}
     </>
   );
+}
+
+function visibleHandleStyle(
+  position: Position,
+  inset: number,
+  isSplit: boolean,
+): CSSProperties {
+  const isVertical = position === Position.Top || position === Position.Bottom;
+  return {
+    background: "transparent",
+    border: "none",
+    borderRadius: 0,
+    width: isVertical ? (isSplit ? 18 : "80%") : 16,
+    height: isVertical ? 16 : isSplit ? 18 : "80%",
+    ...(isSplit
+      ? position === Position.Top
+        ? { left: `calc(${inset * 100}% - 9px)` }
+        : position === Position.Bottom
+          ? { left: `calc(${inset * 100}% - 9px)` }
+          : position === Position.Left
+          ? { top: `calc(${inset * 100}% - 9px)` }
+            : { top: `calc(${inset * 100}% - 9px)` }
+      : {}),
+  };
+}
+
+function compatibilityHandleStyle(position: Position, inset: number): CSSProperties {
+  return {
+    background: "transparent",
+    border: "none",
+    borderRadius: 0,
+    width: 2,
+    height: 2,
+    opacity: 0,
+    pointerEvents: "none",
+    ...(position === Position.Top
+      ? { left: `calc(${inset * 100}% - 1px)` }
+      : position === Position.Bottom
+        ? { left: `calc(${inset * 100}% - 1px)` }
+        : position === Position.Left
+          ? { top: `calc(${inset * 100}% - 1px)` }
+          : { top: `calc(${inset * 100}% - 1px)` }),
+  };
 }
 
 export const RfStateNode = memo(RfStateNodeImpl);

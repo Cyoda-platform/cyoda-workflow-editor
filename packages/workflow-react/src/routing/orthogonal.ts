@@ -3,6 +3,7 @@ import { Position } from "reactflow";
 export type Anchor = "top" | "right" | "bottom" | "left";
 
 export interface Rect {
+  id?: string;
   x: number;
   y: number;
   width: number;
@@ -17,6 +18,8 @@ export interface OrthogonalEdgeInput {
   targetY: number;
   sourcePosition: Position;
   targetPosition: Position;
+  sourceRect?: Rect;
+  targetRect?: Rect;
   /** Pre-computed polyline from the layout engine — if present, used verbatim. */
   routePoints?: { x: number; y: number }[];
   /** Other nodes' bounding boxes; the router may nudge past these. */
@@ -61,6 +64,8 @@ export function orthogonalEdgePath(input: OrthogonalEdgeInput): OrthogonalEdge {
     targetY,
     sourcePosition,
     targetPosition,
+    sourceRect,
+    targetRect,
     routePoints,
     obstacles = [],
     alignmentTolerance = DEFAULT_TOLERANCE,
@@ -81,6 +86,30 @@ export function orthogonalEdgePath(input: OrthogonalEdgeInput): OrthogonalEdge {
   const sy = sourceY;
   const tx = targetX;
   const ty = targetY;
+
+  if (
+    sourceRect &&
+    targetRect &&
+    sourceRect.id === targetRect.id &&
+    isSelfLoop({ sx, sy, tx, ty, sourcePosition, targetPosition })
+  ) {
+    const loop = selfLoopPath({
+      sx,
+      sy,
+      tx,
+      ty,
+      sourcePosition,
+      targetPosition,
+      sourceRect,
+      stubLength,
+    });
+    return {
+      path: polylineToPath(loop.points),
+      labelX: loop.labelX,
+      labelY: loop.labelY,
+      points: loop.points,
+    };
+  }
 
   const sourceNormal = normalOf(sourcePosition);
   const targetNormal = normalOf(targetPosition);
@@ -208,6 +237,107 @@ function tryStraight(
     { x: s.x, y: s.y },
     { x: s.x, y: t.y },
   ];
+}
+
+function isSelfLoop(input: {
+  sx: number;
+  sy: number;
+  tx: number;
+  ty: number;
+  sourcePosition: Position;
+  targetPosition: Position;
+}): boolean {
+  const { sx, sy, tx, ty, sourcePosition, targetPosition } = input;
+  const sameVerticalAxis = Math.abs(sx - tx) <= 1;
+  const sameHorizontalAxis = Math.abs(sy - ty) <= 1;
+  return (
+    (sourcePosition === Position.Bottom &&
+      targetPosition === Position.Top &&
+      sameVerticalAxis &&
+      ty < sy) ||
+    (sourcePosition === Position.Right &&
+      targetPosition === Position.Left &&
+      sameHorizontalAxis &&
+      tx < sx)
+  );
+}
+
+function selfLoopPath(input: {
+  sx: number;
+  sy: number;
+  tx: number;
+  ty: number;
+  sourcePosition: Position;
+  targetPosition: Position;
+  sourceRect: Rect;
+  stubLength: number;
+}): {
+  points: { x: number; y: number }[];
+  labelX: number;
+  labelY: number;
+} {
+  const {
+    sx,
+    sy,
+    tx,
+    ty,
+    sourcePosition,
+    targetPosition,
+    sourceRect,
+    stubLength,
+  } = input;
+  const loopInset = stubLength + 12;
+
+  if (
+    sourcePosition === Position.Bottom &&
+    targetPosition === Position.Top
+  ) {
+    const loopX = sourceRect.x + sourceRect.width + loopInset;
+    const loopY = sourceRect.y + sourceRect.height + loopInset;
+    return {
+      points: [
+        { x: sx, y: sy },
+        { x: sx, y: loopY },
+        { x: loopX, y: loopY },
+        { x: loopX, y: ty - loopInset },
+        { x: tx, y: ty - loopInset },
+        { x: tx, y: ty },
+      ],
+      labelX: loopX,
+      labelY: loopY,
+    };
+  }
+
+  if (
+    sourcePosition === Position.Right &&
+    targetPosition === Position.Left
+  ) {
+    const loopX = sourceRect.x + sourceRect.width + loopInset;
+    const loopY = sourceRect.y + sourceRect.height + loopInset;
+    return {
+      points: [
+        { x: sx, y: sy },
+        { x: loopX, y: sy },
+        { x: loopX, y: loopY },
+        { x: tx - loopInset, y: loopY },
+        { x: tx - loopInset, y: ty },
+        { x: tx, y: ty },
+      ],
+      labelX: loopX,
+      labelY: loopY,
+    };
+  }
+
+  return {
+    points: [
+      { x: sx, y: sy },
+      { x: sx + loopInset, y: sy },
+      { x: tx + loopInset, y: ty },
+      { x: tx, y: ty },
+    ],
+    labelX: (sx + tx) / 2 + loopInset,
+    labelY: (sy + ty) / 2,
+  };
 }
 
 function nudgeHorizontalLine(

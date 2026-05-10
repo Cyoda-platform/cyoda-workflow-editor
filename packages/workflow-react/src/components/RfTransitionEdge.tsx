@@ -38,6 +38,8 @@ export interface RfEdgeData {
   liveTarget?: { x: number; y: number };
   liveSourcePosition?: Position;
   liveTargetPosition?: Position;
+  liveSourceRect?: Rect;
+  liveTargetRect?: Rect;
 }
 
 function RfTransitionEdgeImpl(props: EdgeProps<RfEdgeData>) {
@@ -66,6 +68,8 @@ function RfTransitionEdgeImpl(props: EdgeProps<RfEdgeData>) {
     targetY: resolvedTargetY,
     sourcePosition: data.liveSourcePosition ?? sourcePosition,
     targetPosition: data.liveTargetPosition ?? targetPosition,
+    sourceRect: data.liveSourceRect,
+    targetRect: data.liveTargetRect,
     obstacles,
   });
 
@@ -76,7 +80,6 @@ function RfTransitionEdgeImpl(props: EdgeProps<RfEdgeData>) {
     : edge.isLoopback
       ? geometry.edge.loopStrokeWidth
       : geometry.edge.strokeWidth;
-  const isManualSolid = edge.manual && !edge.disabled && !edge.isLoopback;
 
   const badges = badgesFor(edge.summary, {
     manual: edge.manual,
@@ -95,15 +98,6 @@ function RfTransitionEdgeImpl(props: EdgeProps<RfEdgeData>) {
         }}
         markerEnd={`url(#${arrowMarkerId(color)})`}
       />
-      {isManualSolid && (
-        <path
-          d={path}
-          fill="none"
-          stroke={workflowPalette.neutrals.white}
-          strokeWidth={0.6}
-          pointerEvents="none"
-        />
-      )}
       <EdgeLabelRenderer>
         <div
           style={{

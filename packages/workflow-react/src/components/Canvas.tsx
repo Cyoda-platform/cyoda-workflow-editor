@@ -66,6 +66,7 @@ function toRfNodes(
   issuesByNode: Map<string, ValidationIssue[]>,
   selection: Selection,
 ): Node<RfStateNodeData>[] {
+  const transitionCounts = countIncidentTransitions(graph, activeWorkflow);
   return graph.nodes
     .filter((n): n is GraphStateNode => n.kind === "state")
     .filter((n) => !activeWorkflow || n.workflow === activeWorkflow)
@@ -82,7 +83,13 @@ function toRfNodes(
       return {
         id: n.id,
         type: "stateNode",
-        data: { node: n, hasError, hasWarning, size },
+        data: {
+          node: n,
+          hasError,
+          hasWarning,
+          size,
+          denseAnchors: (transitionCounts.get(n.id) ?? 0) >= 3,
+        },
         position: pos ? { x: pos.x, y: pos.y } : { x: 0, y: 0 },
         selected,
         // width/height on the node object tells ReactFlow the dimensions
@@ -103,6 +110,7 @@ function toRfEdges(
   selection: Selection,
   orientation: "vertical" | "horizontal",
 ): Edge<RfEdgeData>[] {
+  const transitionCounts = countIncidentTransitions(graph, activeWorkflow);
   const stateById = new Map(
     graph.nodes
       .filter((n): n is GraphStateNode => n.kind === "state")
@@ -119,10 +127,16 @@ function toRfEdges(
       width: p.width,
       height: p.height,
     }));
-  return graph.edges
+  const transitions = graph.edges
     .filter((e): e is TransitionEdge => e.kind === "transition")
-    .filter((e) => !activeWorkflow || e.workflow === activeWorkflow)
-    .map((e) => {
+    .filter((e) => !activeWorkflow || e.workflow === activeWorkflow);
+  const autoHandles = computeAutoHandles(
+    transitions,
+    displayPositions,
+    orientation,
+    transitionCounts,
+  );
+  return transitions.map((e) => {
       const target = stateById.get(e.targetId);
       const targetIsTerminal =
         target?.role === "terminal" || target?.role === "initial-terminal";
@@ -132,26 +146,8 @@ function toRfEdges(
         (o) => o.id !== e.sourceId && o.id !== e.targetId,
       );
 
-      // Detect horizontal back-edges (source is to the right of target).
-      // The layout synthesises these as U-arcs exiting/entering from the
-      // bottom of each node, so the handle must match.
-      const isHorizontalBackEdge =
-        !e.isSelf &&
-        orientation === "horizontal" &&
-        (displayPositions.get(e.sourceId)?.x ?? 0) >
-          (displayPositions.get(e.targetId)?.x ?? 0);
-      const sourceHandle = anchorHandleId(
-        e.sourceAnchor,
-        "source",
-        orientation,
-        isHorizontalBackEdge,
-      );
-      const targetHandle = anchorHandleId(
-        e.targetAnchor,
-        "target",
-        orientation,
-        isHorizontalBackEdge,
-      );
+      const sourceHandle = autoHandles.get(`${e.id}:source`);
+      const targetHandle = autoHandles.get(`${e.id}:target`);
       const sourcePosition = positionForHandle(sourceHandle);
       const targetPosition = positionForHandle(targetHandle);
 
@@ -166,10 +162,12 @@ function toRfEdges(
           edge: e,
           targetIsTerminal: !!targetIsTerminal,
           obstacles,
-          liveSource: pointForHandle(displayPositions.get(e.sourceId), sourcePosition),
-          liveTarget: pointForHandle(displayPositions.get(e.targetId), targetPosition),
+          liveSource: pointForHandle(displayPositions.get(e.sourceId), sourceHandle),
+          liveTarget: pointForHandle(displayPositions.get(e.targetId), targetHandle),
           liveSourcePosition: sourcePosition,
           liveTargetPosition: targetPosition,
+          liveSourceRect: displayPositions.get(e.sourceId),
+          liveTargetRect: displayPositions.get(e.targetId),
         },
         reconnectable: true,
         interactionWidth: selected ? 28 : 18,
@@ -186,27 +184,29 @@ function samePosition(
 }
 
 function positionForHandle(handle: string | undefined): Position {
-  if (handle === "top") return Position.Top;
-  if (handle === "right") return Position.Right;
-  if (handle === "left") return Position.Left;
+  if (handle?.startsWith("top")) return Position.Top;
+  if (handle?.startsWith("right")) return Position.Right;
+  if (handle?.startsWith("left")) return Position.Left;
   return Position.Bottom;
 }
 
 function pointForHandle(
   node: NodePosition | undefined,
-  position: Position,
+  handle: string | undefined,
 ): { x: number; y: number } | undefined {
   if (!node) return undefined;
+  const position = positionForHandle(handle);
+  const handleInset = insetForHandle(handle);
   if (position === Position.Top) {
-    return { x: node.x + node.width / 2, y: node.y };
+    return { x: node.x + node.width * handleInset, y: node.y };
   }
   if (position === Position.Right) {
-    return { x: node.x + node.width, y: node.y + node.height / 2 };
+    return { x: node.x + node.width, y: node.y + node.height * handleInset };
   }
   if (position === Position.Left) {
-    return { x: node.x, y: node.y + node.height / 2 };
+    return { x: node.x, y: node.y + node.height * handleInset };
   }
-  return { x: node.x + node.width / 2, y: node.y + node.height };
+  return { x: node.x + node.width * handleInset, y: node.y + node.height };
 }
 
 function positionsFromNodes(
@@ -265,7 +265,181 @@ function anchorHandleId(
     if (isBackEdge) return "bottom";
     return role === "source" ? "right" : "left";
   }
+  if (isBackEdge) return "right";
   return role === "source" ? "bottom" : "top";
+}
+
+function countIncidentTransitions(
+  graph: GraphDocument,
+  activeWorkflow: string | null,
+): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const edge of graph.edges) {
+    if (edge.kind !== "transition") continue;
+    if (activeWorkflow && edge.workflow !== activeWorkflow) continue;
+    counts.set(edge.sourceId, (counts.get(edge.sourceId) ?? 0) + 1);
+    counts.set(edge.targetId, (counts.get(edge.targetId) ?? 0) + 1);
+  }
+  return counts;
+}
+
+type BaseHandle = "top" | "right" | "bottom" | "left";
+
+type EndpointAssignment = {
+  edgeId: string;
+  role: "source" | "target";
+  nodeId: string;
+  oppositeId: string;
+  baseSide: BaseHandle;
+};
+
+function computeAutoHandles(
+  edges: TransitionEdge[],
+  displayPositions: Map<string, NodePosition>,
+  orientation: "vertical" | "horizontal",
+  transitionCounts: Map<string, number>,
+): Map<string, string> {
+  const assignments = new Map<string, string>();
+  const grouped = new Map<string, EndpointAssignment[]>();
+
+  for (const edge of edges) {
+    const sourceSide = anchorHandleId(
+      edge.sourceAnchor,
+      "source",
+      orientation,
+      isBackEdge(edge, displayPositions, orientation),
+    ) as BaseHandle;
+    const targetSide = anchorHandleId(
+      edge.targetAnchor,
+      "target",
+      orientation,
+      isBackEdge(edge, displayPositions, orientation),
+    ) as BaseHandle;
+
+    if (edge.sourceAnchor) {
+      assignments.set(`${edge.id}:source`, edge.sourceAnchor);
+    } else {
+      pushAssignment(grouped, {
+        edgeId: edge.id,
+        role: "source",
+        nodeId: edge.sourceId,
+        oppositeId: edge.targetId,
+        baseSide: sourceSide,
+      });
+    }
+    if (edge.targetAnchor) {
+      assignments.set(`${edge.id}:target`, edge.targetAnchor);
+    } else {
+      pushAssignment(grouped, {
+        edgeId: edge.id,
+        role: "target",
+        nodeId: edge.targetId,
+        oppositeId: edge.sourceId,
+        baseSide: targetSide,
+      });
+    }
+  }
+
+  for (const [groupKey, endpoints] of grouped) {
+    const [nodeId, baseSide] = groupKey.split("|") as [string, BaseHandle];
+    const sorted = [...endpoints].sort((a, b) =>
+      sortEndpointAssignments(a, b, baseSide, displayPositions),
+    );
+    const useSplitHandles =
+      (transitionCounts.get(nodeId) ?? 0) >= 3 ||
+      sorted.length >= 2 ||
+      (orientation === "vertical" && baseSide === "right") ||
+      (orientation === "horizontal" && baseSide === "bottom");
+    sorted.forEach((endpoint, index) => {
+      const handleId = useSplitHandles
+        ? splitHandleFor(baseSide, index, sorted.length)
+        : baseSide;
+      assignments.set(`${endpoint.edgeId}:${endpoint.role}`, handleId);
+    });
+  }
+
+  return assignments;
+}
+
+function pushAssignment(
+  grouped: Map<string, EndpointAssignment[]>,
+  assignment: EndpointAssignment,
+) {
+  const key = `${assignment.nodeId}|${assignment.baseSide}`;
+  const list = grouped.get(key) ?? [];
+  list.push(assignment);
+  grouped.set(key, list);
+}
+
+function sortEndpointAssignments(
+  a: EndpointAssignment,
+  b: EndpointAssignment,
+  baseSide: BaseHandle,
+  displayPositions: Map<string, NodePosition>,
+): number {
+  const aPos = displayPositions.get(a.oppositeId);
+  const bPos = displayPositions.get(b.oppositeId);
+  const aAxis =
+    baseSide === "top" || baseSide === "bottom"
+      ? aPos?.x ?? 0
+      : aPos?.y ?? 0;
+  const bAxis =
+    baseSide === "top" || baseSide === "bottom"
+      ? bPos?.x ?? 0
+      : bPos?.y ?? 0;
+  if (aAxis !== bAxis) return aAxis - bAxis;
+  return a.edgeId.localeCompare(b.edgeId);
+}
+
+function splitHandleFor(
+  side: BaseHandle,
+  index: number,
+  total: number,
+): string {
+  const variants =
+    side === "top"
+      ? ["top-left", "top", "top-right"]
+      : side === "right"
+        ? ["right-top", "right", "right-bottom"]
+        : side === "bottom"
+          ? ["bottom-left", "bottom", "bottom-right"]
+          : ["left-top", "left", "left-bottom"];
+
+  if (total <= 1) return variants[1]!;
+  if (total === 2) return variants[index === 0 ? 0 : 2]!;
+  if (total === 3) return variants[index]!;
+  return variants[index % variants.length]!;
+}
+
+function insetForHandle(handle: string | undefined): number {
+  switch (handle) {
+    case "top-left":
+    case "right-top":
+    case "bottom-left":
+    case "left-top":
+      return 0.28;
+    case "top-right":
+    case "right-bottom":
+    case "bottom-right":
+    case "left-bottom":
+      return 0.72;
+    default:
+      return 0.5;
+  }
+}
+
+function isBackEdge(
+  edge: TransitionEdge,
+  displayPositions: Map<string, NodePosition>,
+  orientation: "vertical" | "horizontal",
+): boolean {
+  if (edge.isSelf) return false;
+  const source = displayPositions.get(edge.sourceId);
+  const target = displayPositions.get(edge.targetId);
+  if (!source || !target) return false;
+  return orientation === "horizontal"
+    ? source.x > target.x
+    : source.y > target.y;
 }
 
 function groupIssuesByNode(

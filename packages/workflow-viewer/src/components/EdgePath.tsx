@@ -104,9 +104,6 @@ export function EdgePath({
         ? geometry.edge.loopStrokeWidth
         : geometry.edge.strokeWidth;
   const opacity = dimmed ? 0.25 : 1;
-  // Manual transitions get a thin ghost stroke on top of the main stroke —
-  // strengthens the manual-vs-auto visual cue without changing semantics.
-  const isManualSolid = edge.manual && !edge.disabled && !edge.isLoopback;
 
   return (
     <g
@@ -130,15 +127,6 @@ export function EdgePath({
         strokeDasharray={dash}
         markerEnd={`url(#wf-arrow-${colorKey(color)})`}
       />
-      {isManualSolid && (
-        <path
-          d={d}
-          fill="none"
-          stroke={workflowPalette.neutrals.white}
-          strokeWidth={0.6}
-          pointerEvents="none"
-        />
-      )}
     </g>
   );
 }

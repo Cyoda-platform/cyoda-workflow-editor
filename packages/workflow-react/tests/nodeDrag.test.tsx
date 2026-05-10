@@ -25,7 +25,11 @@ const { rfCallbacks } = vi.hoisted(() => ({
     onNodeDrag: undefined as undefined | ((e: unknown, node: unknown) => void),
     onNodeDragStop:  undefined as undefined | ((e: unknown, node: unknown) => void),
     onNodesChange: undefined as undefined | ((changes: unknown[]) => void),
-    latestNodes: undefined as undefined | { id: string; position: { x: number; y: number } }[],
+    latestNodes: undefined as undefined | {
+      id: string;
+      position: { x: number; y: number };
+      data?: { denseAnchors?: boolean; node?: { stateCode?: string } };
+    }[],
     latestEdges: undefined as undefined | {
       id: string;
       sourceHandle?: string;
@@ -64,6 +68,22 @@ vi.mock("reactflow", () => {
     width: node.width ?? node.style?.width ?? 160,
     height: node.height ?? node.style?.height ?? 60,
   });
+  const handleInset = (handle: string | undefined) => {
+    switch (handle) {
+      case "top-left":
+      case "right-top":
+      case "bottom-left":
+      case "left-top":
+        return 0.28;
+      case "top-right":
+      case "right-bottom":
+      case "bottom-right":
+      case "left-bottom":
+        return 0.72;
+      default:
+        return 0.5;
+    }
+  };
   const handlePoint = (
     node: MockNode,
     handle: string | undefined,
@@ -71,16 +91,17 @@ vi.mock("reactflow", () => {
   ) => {
     const resolved = handle ?? (role === "source" ? "bottom" : "top");
     const { width, height } = sizeOf(node);
-    if (resolved === "top") return { x: node.position.x + width / 2, y: node.position.y };
-    if (resolved === "right") return { x: node.position.x + width, y: node.position.y + height / 2 };
-    if (resolved === "left") return { x: node.position.x, y: node.position.y + height / 2 };
-    return { x: node.position.x + width / 2, y: node.position.y + height };
+    const inset = handleInset(resolved);
+    if (resolved.startsWith("top")) return { x: node.position.x + width * inset, y: node.position.y };
+    if (resolved.startsWith("right")) return { x: node.position.x + width, y: node.position.y + height * inset };
+    if (resolved.startsWith("left")) return { x: node.position.x, y: node.position.y + height * inset };
+    return { x: node.position.x + width * inset, y: node.position.y + height };
   };
   const handlePosition = (handle: string | undefined, role: "source" | "target") => {
     const resolved = handle ?? (role === "source" ? "bottom" : "top");
-    if (resolved === "top") return Position.Top;
-    if (resolved === "right") return Position.Right;
-    if (resolved === "left") return Position.Left;
+    if (resolved.startsWith("top")) return Position.Top;
+    if (resolved.startsWith("right")) return Position.Right;
+    if (resolved.startsWith("left")) return Position.Left;
     return Position.Bottom;
   };
 
@@ -205,6 +226,22 @@ function stateUuid(
   return entry[0];
 }
 
+function transitionUuid(
+  doc: WorkflowEditorDocument,
+  workflow: string,
+  stateCode: string,
+): string {
+  const entry = Object.entries(doc.meta.ids.transitions).find(
+    ([, ptr]) =>
+      ptr.workflow === workflow &&
+      ptr.state === stateCode,
+  );
+  if (!entry) {
+    throw new Error(`Transition UUID not found for ${workflow}:${stateCode}`);
+  }
+  return entry[0];
+}
+
 function buildLayout(doc: WorkflowEditorDocument): LayoutResult {
   const startId = stateUuid(doc, "wf", "start");
   const endId   = stateUuid(doc, "wf", "end");
@@ -241,6 +278,67 @@ const TWO_STATE_CONNECTED = JSON.stringify({
       states: {
         start: { transitions: [{ name: "go", next: "end", manual: false, disabled: false }] },
         end:   { transitions: [] },
+      },
+    },
+  ],
+});
+
+const BIDIRECTIONAL_VERTICAL = JSON.stringify({
+  importMode: "MERGE",
+  workflows: [
+    {
+      version: "1.0",
+      name: "wf",
+      initialState: "top",
+      active: true,
+      states: {
+        top: {
+          transitions: [{ name: "to_bottom", next: "bottom", manual: false, disabled: false }],
+        },
+        bottom: {
+          transitions: [{ name: "to_top", next: "top", manual: false, disabled: false }],
+        },
+      },
+    },
+  ],
+});
+
+const DENSE_TRANSITIONS = JSON.stringify({
+  importMode: "MERGE",
+  workflows: [
+    {
+      version: "1.0",
+      name: "wf",
+      initialState: "start",
+      active: true,
+      states: {
+        start: {
+          transitions: [{ name: "to_busy", next: "busy", manual: false, disabled: false }],
+        },
+        left: {
+          transitions: [{ name: "to_busy_left", next: "busy", manual: false, disabled: false }],
+        },
+        busy: {
+          transitions: [{ name: "to_end", next: "end", manual: false, disabled: false }],
+        },
+        end: { transitions: [] },
+      },
+    },
+  ],
+});
+
+const SELF_LOOP = JSON.stringify({
+  importMode: "MERGE",
+  workflows: [
+    {
+      version: "1.0",
+      name: "wf",
+      initialState: "approved",
+      active: true,
+      states: {
+        approved: {
+          transitions: [{ name: "retry_here", next: "approved", manual: true, disabled: false }],
+        },
       },
     },
   ],
@@ -432,6 +530,113 @@ describe("transition anchor dropdowns", () => {
       expect(edge?.targetHandle).toBe("left");
       expect(screen.getByTestId(`rf-edge-path-${transitionUuid}`).getAttribute("d")).not.toEqual(initialPath);
     });
+  });
+});
+
+describe("auto handle routing", () => {
+  it("fans a busy state out across split handles once it has three incident transitions", async () => {
+    const doc = fixture(DENSE_TRANSITIONS);
+    const startId = stateUuid(doc, "wf", "start");
+    const leftId = stateUuid(doc, "wf", "left");
+    const busyId = stateUuid(doc, "wf", "busy");
+    const endId = stateUuid(doc, "wf", "end");
+    const toBusy = transitionUuid(doc, "wf", "start");
+    const toBusyLeft = transitionUuid(doc, "wf", "left");
+    const toEnd = transitionUuid(doc, "wf", "busy");
+
+    vi.mocked(layoutGraph).mockResolvedValue({
+      positions: new Map([
+        [startId, { id: startId, x: 80, y: 80, width: 160, height: 60 }],
+        [leftId, { id: leftId, x: 300, y: 80, width: 160, height: 60 }],
+        [busyId, { id: busyId, x: 190, y: 260, width: 160, height: 60 }],
+        [endId, { id: endId, x: 190, y: 440, width: 160, height: 60 }],
+      ]),
+      edges: new Map(),
+      width: 640,
+      height: 620,
+      preset: "configuratorReadable",
+    });
+
+    render(<WorkflowEditor document={doc} />);
+
+    await waitFor(() => expect(rfCallbacks.latestEdges).toBeDefined());
+
+    const busyNode = rfCallbacks.latestNodes?.find((node) => node.id === busyId);
+    expect(busyNode?.data?.denseAnchors).toBe(true);
+
+    const incomingHandles = [
+      rfCallbacks.latestEdges?.find((edge) => edge.id === toBusy)?.targetHandle,
+      rfCallbacks.latestEdges?.find((edge) => edge.id === toBusyLeft)?.targetHandle,
+    ];
+    expect(new Set(incomingHandles)).toEqual(new Set(["top-left", "top-right"]));
+    expect(rfCallbacks.latestEdges?.find((edge) => edge.id === toEnd)?.sourceHandle).toBe("bottom");
+  });
+
+  it("routes the reverse leg of a bidirectional pair on a different corridor", async () => {
+    const doc = fixture(BIDIRECTIONAL_VERTICAL);
+    const topId = stateUuid(doc, "wf", "top");
+    const bottomId = stateUuid(doc, "wf", "bottom");
+    const toBottom = transitionUuid(doc, "wf", "top");
+    const toTop = transitionUuid(doc, "wf", "bottom");
+
+    vi.mocked(layoutGraph).mockResolvedValue({
+      positions: new Map([
+        [topId, { id: topId, x: 120, y: 80, width: 160, height: 60 }],
+        [bottomId, { id: bottomId, x: 120, y: 280, width: 160, height: 60 }],
+      ]),
+      edges: new Map(),
+      width: 480,
+      height: 480,
+      preset: "configuratorReadable",
+    });
+
+    render(<WorkflowEditor document={doc} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`rf-edge-path-${toBottom}`).getAttribute("d")).toBeTruthy();
+      expect(screen.getByTestId(`rf-edge-path-${toTop}`).getAttribute("d")).toBeTruthy();
+    });
+
+    const forwardEdge = rfCallbacks.latestEdges?.find((edge) => edge.id === toBottom);
+    const reverseEdge = rfCallbacks.latestEdges?.find((edge) => edge.id === toTop);
+    expect(forwardEdge?.sourceHandle).toBe("bottom");
+    expect(forwardEdge?.targetHandle).toBe("top");
+    expect(reverseEdge?.sourceHandle?.startsWith("right")).toBe(true);
+    expect(reverseEdge?.targetHandle?.startsWith("right")).toBe(true);
+
+    const forwardPath = screen.getByTestId(`rf-edge-path-${toBottom}`).getAttribute("d");
+    const reversePath = screen.getByTestId(`rf-edge-path-${toTop}`).getAttribute("d");
+    expect(reversePath).not.toEqual(forwardPath);
+    expect(reversePath).toMatch(/L/);
+  });
+
+  it("renders a visible self-loop path for same-state transitions", async () => {
+    const doc = fixture(SELF_LOOP);
+    const approvedId = stateUuid(doc, "wf", "approved");
+    const loopId = transitionUuid(doc, "wf", "approved");
+
+    vi.mocked(layoutGraph).mockResolvedValue({
+      positions: new Map([
+        [approvedId, { id: approvedId, x: 120, y: 220, width: 160, height: 60 }],
+      ]),
+      edges: new Map(),
+      width: 440,
+      height: 420,
+      preset: "configuratorReadable",
+    });
+
+    render(<WorkflowEditor document={doc} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`rf-edge-path-${loopId}`).getAttribute("d")).toBeTruthy();
+    });
+
+    const loopEdge = rfCallbacks.latestEdges?.find((edge) => edge.id === loopId);
+    expect(loopEdge?.sourceHandle).toBe("bottom");
+    expect(loopEdge?.targetHandle).toBe("top");
+
+    const loopPath = screen.getByTestId(`rf-edge-path-${loopId}`).getAttribute("d");
+    expect(loopPath).toBe("M 200 280 L 200 308 L 308 308 L 308 192 L 200 192 L 200 220");
   });
 });
 

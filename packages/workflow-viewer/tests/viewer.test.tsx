@@ -5,6 +5,7 @@ import { projectToGraph } from "@cyoda/workflow-graph";
 import { WorkflowViewer } from "../src/index.js";
 import { computeEdgeGeometry } from "../src/components/EdgePath.js";
 import { nudgeLabels } from "../src/layout.js";
+import { laneDashArray } from "../src/theme/lane.js";
 
 function projectFixture(json: unknown) {
   const parsed = parseImportPayload(JSON.stringify(json));
@@ -150,6 +151,22 @@ describe("WorkflowViewer", () => {
     const rect = screen.getByTestId("state-node-wide").querySelector("rect");
     expect(rect?.getAttribute("width")).toBe("220");
     expect(rect?.getAttribute("height")).toBe("96");
+  });
+
+  test("renders manual transitions dotted and automatic transitions solid", () => {
+    const manualEdge = {
+      manual: true,
+      disabled: false,
+      isLoopback: false,
+    } as Parameters<typeof laneDashArray>[0];
+    const automaticEdge = {
+      manual: false,
+      disabled: false,
+      isLoopback: false,
+    } as Parameters<typeof laneDashArray>[0];
+
+    expect(laneDashArray(manualEdge)).toBe("2 4");
+    expect(laneDashArray(automaticEdge)).toBeUndefined();
   });
 });
 
