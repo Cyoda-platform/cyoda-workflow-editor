@@ -168,6 +168,9 @@ importers:
       '@cyoda/workflow-layout':
         specifier: workspace:*
         version: link:../workflow-layout
+      '@cyoda/workflow-monaco':
+        specifier: workspace:*
+        version: link:../workflow-monaco
       '@cyoda/workflow-viewer':
         specifier: workspace:*
         version: link:../workflow-viewer

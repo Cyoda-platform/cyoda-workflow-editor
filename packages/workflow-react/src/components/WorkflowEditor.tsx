@@ -27,6 +27,11 @@ import { DragConnectModal } from "../modals/DragConnectModal.js";
 import { AddStateModal } from "../modals/AddStateModal.js";
 import { CommentNode } from "./CommentNode.js";
 import type { RfEdgeData } from "./RfTransitionEdge.js";
+import {
+  WorkflowJsonEditor,
+  type JsonEditStatus,
+  type WorkflowJsonEditorConfig,
+} from "./WorkflowJsonEditor.js";
 
 /** Controls which chrome elements the editor shell renders. All fields default to `true`. */
 export interface ChromeOptions {
@@ -63,11 +68,25 @@ export interface WorkflowEditorProps {
    * "cyoda-editor-layout". Pass `null` to disable localStorage persistence.
    */
   localStorageKey?: string | null;
+  /** Enables the canonical JSON editing surface inside the editor shell. */
+  enableJsonEditor?: boolean;
+  /** Controls whether JSON appears as a tab or alongside the graph. */
+  jsonEditorPlacement?: "tab" | "split";
+  /** Optional host-supplied Monaco runtime/configuration. */
+  jsonEditor?: WorkflowJsonEditorConfig | null;
+  /** Reports JSON parse/schema/apply status for host UX. */
+  onJsonStatusChange?: (status: JsonEditStatus) => void;
 }
 
 interface PendingDelete {
   workflow: string;
   stateCode: string;
+}
+
+type WorkflowEditorSurface = "graph" | "json";
+
+function hasPersistedWorkflowUi(meta: WorkflowUiMeta | undefined): meta is WorkflowUiMeta {
+  return !!meta && Object.values(meta).some((value) => value !== undefined);
 }
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -101,6 +120,10 @@ export function WorkflowEditor({
   layoutMetadata: externalLayoutMeta,
   onLayoutMetadataChange,
   localStorageKey = "cyoda-editor-layout",
+  enableJsonEditor = false,
+  jsonEditorPlacement = "tab",
+  jsonEditor = null,
+  onJsonStatusChange,
 }: WorkflowEditorProps) {
   const mergedMessages = useMemo(() => mergeMessages(messages), [messages]);
 
@@ -113,7 +136,7 @@ export function WorkflowEditor({
       const parsed = JSON.parse(stored) as Record<string, WorkflowUiMeta>;
       const merged: Record<string, WorkflowUiMeta> = { ...initialDocument.meta.workflowUi };
       for (const [wfName, ui] of Object.entries(parsed)) {
-        merged[wfName] = { ...(merged[wfName] ?? {}), layout: ui.layout, comments: ui.comments };
+        merged[wfName] = { ...(merged[wfName] ?? {}), ...ui };
       }
       return {
         ...initialDocument,
@@ -131,11 +154,20 @@ export function WorkflowEditor({
   const [pendingAddState, setPendingAddState] = useState(false);
   const [reconnectError, setReconnectError] = useState<string | null>(null);
   const [layoutKey, setLayoutKey] = useState(0);
+  const [activeSurface, setActiveSurface] = useState<WorkflowEditorSurface>("graph");
+  const [jsonStatus, setJsonStatus] = useState<JsonEditStatus>({ status: "idle" });
   const selectionRef = useRef<Selection>(state.selection);
+  const documentStateRef = useRef(state.document);
+  const activeWorkflowRef = useRef(state.activeWorkflow);
 
   useEffect(() => {
     selectionRef.current = state.selection;
   }, [state.selection]);
+
+  useEffect(() => {
+    documentStateRef.current = state.document;
+    activeWorkflowRef.current = state.activeWorkflow;
+  }, [state.document, state.activeWorkflow]);
 
   useEffect(() => {
     onChange?.(state.document);
@@ -147,8 +179,8 @@ export function WorkflowEditor({
     try {
       const toStore: Record<string, WorkflowUiMeta> = {};
       for (const [wfName, ui] of Object.entries(state.document.meta.workflowUi)) {
-        if (ui.layout || ui.comments) {
-          toStore[wfName] = { layout: ui.layout, comments: ui.comments };
+        if (hasPersistedWorkflowUi(ui)) {
+          toStore[wfName] = ui;
         }
       }
       if (Object.keys(toStore).length > 0) {
@@ -174,7 +206,24 @@ export function WorkflowEditor({
     [state.document],
   );
 
-  const dispatch = (patch: DomainPatch) => actions.dispatch(patch);
+  const dispatch = useCallback(
+    (patch: DomainPatch) => actions.dispatch(patch),
+    [actions],
+  );
+  const handleJsonStatusChange = useCallback(
+    (status: JsonEditStatus) => {
+      setJsonStatus(status);
+      onJsonStatusChange?.(status);
+    },
+    [onJsonStatusChange],
+  );
+  const jsonEditorVisible =
+    enableJsonEditor && (jsonEditorPlacement === "split" || activeSurface === "json");
+  const graphVisible =
+    !enableJsonEditor || jsonEditorPlacement === "split" || activeSurface === "graph";
+  const saveBlockedByJson =
+    jsonStatus.status === "invalid-json" || jsonStatus.status === "invalid-schema";
+  const saveDisabled = readOnly || derived.errorCount > 0 || saveBlockedByJson;
 
   const handleNodeDragStop = useCallback(
     (nodeId: string, x: number, y: number) => {
@@ -321,6 +370,10 @@ export function WorkflowEditor({
 
   const handleSelectionChange = useCallback(
     (selection: Selection) => {
+      const workflow = workflowForSelection(documentStateRef.current, selection);
+      if (workflow && workflow !== activeWorkflowRef.current) {
+        actions.setActiveWorkflow(workflow);
+      }
       selectionRef.current = selection;
       actions.setSelection(selection);
     },
@@ -364,7 +417,7 @@ export function WorkflowEditor({
         return;
       }
       if (mod && (e.key === "s" || e.key === "S")) {
-        if (onSave && !readOnly && derived.errorCount === 0) {
+        if (onSave && !saveDisabled) {
           e.preventDefault();
           onSave(state.document);
         }
@@ -394,7 +447,7 @@ export function WorkflowEditor({
       state.document,
       actions,
       onSave,
-      derived.errorCount,
+      saveDisabled,
       handleAutoLayout,
       handleResetLayout,
     ],
@@ -468,6 +521,12 @@ export function WorkflowEditor({
       ? state.document.meta.workflowUi[state.activeWorkflow]?.viewports?.[orientation]
       : undefined;
 
+  useEffect(() => {
+    if (enableJsonEditor) return;
+    setJsonStatus({ status: "idle" });
+    onJsonStatusChange?.({ status: "idle" });
+  }, [enableJsonEditor, onJsonStatusChange]);
+
   const handleViewportChange = useCallback(
     (viewport: EditorViewport) => {
       const workflow = state.activeWorkflow;
@@ -500,6 +559,108 @@ export function WorkflowEditor({
     [actions, orientation, state.activeWorkflow, state.document],
   );
 
+  const graphPane = (
+    <div
+      data-testid="workflow-editor-graph-pane"
+      style={{ flex: 1, minWidth: 0, minHeight: 0, height: "100%", position: "relative" }}
+    >
+      <Canvas
+        graph={derived.graph}
+        issues={derived.issues}
+        activeWorkflow={state.activeWorkflow}
+        selection={state.selection}
+        layoutOptions={effectiveLayoutOptions}
+        savedViewport={savedViewport}
+        onSelectionChange={handleSelectionChange}
+        onViewportChange={handleViewportChange}
+        onConnect={handleConnect}
+        onReconnect={handleReconnect}
+        onNodesDelete={(nodes) => {
+          if (readOnly || anyModalOpen) return;
+          const node = nodes[0]?.data?.node;
+          if (node) requestDeleteState(node.workflow, node.stateCode);
+        }}
+        onEdgesDelete={(edges) => {
+          if (readOnly || anyModalOpen) return;
+          const edge = edges[0];
+          if (edge) dispatch({ op: "removeTransition", transitionUuid: edge.id });
+        }}
+        onNodeDragStop={!readOnly ? handleNodeDragStop : undefined}
+        layoutKey={layoutKey}
+        readOnly={readOnly}
+        showMinimap={chrome?.minimap !== false}
+        showControls={chrome?.controls !== false}
+      />
+      {reconnectError && (
+        <div
+          role="alert"
+          data-testid="reconnect-error"
+          style={{
+            position: "absolute",
+            top: 12,
+            left: 12,
+            zIndex: 20,
+            maxWidth: 360,
+            padding: "8px 10px",
+            borderRadius: 6,
+            border: "1px solid #FCA5A5",
+            background: "#FEF2F2",
+            color: "#991B1B",
+            fontSize: 12,
+            boxShadow: "0 2px 8px rgba(15,23,42,0.12)",
+          }}
+        >
+          {reconnectError}
+        </div>
+      )}
+      {state.activeWorkflow && (() => {
+        const comments = state.document.meta.workflowUi[state.activeWorkflow!]?.comments;
+        if (!comments) return null;
+        return Object.values(comments).map((c) => (
+          <CommentNode
+            key={c.id}
+            comment={c}
+            disabled={readOnly}
+            onUpdate={(updates) =>
+              actions.dispatch({
+                op: "updateComment",
+                workflow: state.activeWorkflow!,
+                commentId: c.id,
+                updates,
+              })
+            }
+            onRemove={() =>
+              actions.dispatch({
+                op: "removeComment",
+                workflow: state.activeWorkflow!,
+                commentId: c.id,
+              })
+            }
+          />
+        ));
+      })()}
+    </div>
+  );
+
+  const jsonPane = enableJsonEditor ? (
+    <div
+      data-testid="workflow-editor-json-pane"
+      style={{ flex: 1, minWidth: 0, minHeight: 0, height: "100%" }}
+    >
+      <WorkflowJsonEditor
+        document={state.document}
+        issues={derived.issues}
+        selection={state.selection}
+        readOnly={readOnly}
+        visible={jsonEditorVisible}
+        config={jsonEditor}
+        onPatch={dispatch}
+        onSelectionChange={handleSelectionChange}
+        onStatusChange={handleJsonStatusChange}
+      />
+    </div>
+  ) : null;
+
   return (
     <I18nContext.Provider value={mergedMessages}>
       <div
@@ -522,6 +683,7 @@ export function WorkflowEditor({
             canUndo={state.undoStack.length > 0}
             canRedo={state.redoStack.length > 0}
             readOnly={readOnly}
+            saveDisabled={saveDisabled}
             onUndo={actions.undo}
             onRedo={actions.redo}
             onSave={onSave ? () => onSave(state.document) : undefined}
@@ -547,94 +709,88 @@ export function WorkflowEditor({
           />
         )}
         <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
-          <div style={{ flex: 1, minWidth: 0, position: "relative" }}>
-            <Canvas
-              graph={derived.graph}
-              issues={derived.issues}
-              activeWorkflow={state.activeWorkflow}
-              selection={state.selection}
-              layoutOptions={effectiveLayoutOptions}
-              savedViewport={savedViewport}
-              onSelectionChange={handleSelectionChange}
-              onViewportChange={handleViewportChange}
-              onConnect={handleConnect}
-              onReconnect={handleReconnect}
-              onNodesDelete={(nodes) => {
-                if (readOnly || anyModalOpen) return;
-                const node = nodes[0]?.data?.node;
-                if (node) requestDeleteState(node.workflow, node.stateCode);
-              }}
-              onEdgesDelete={(edges) => {
-                if (readOnly || anyModalOpen) return;
-                const edge = edges[0];
-                if (edge) dispatch({ op: "removeTransition", transitionUuid: edge.id });
-              }}
-              onNodeDragStop={!readOnly ? handleNodeDragStop : undefined}
-              layoutKey={layoutKey}
-              readOnly={readOnly}
-              showMinimap={chrome?.minimap !== false}
-              showControls={chrome?.controls !== false}
-            />
-            {/* Canvas comments overlay */}
-            {reconnectError && (
+          <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column" }}>
+            {enableJsonEditor && jsonEditorPlacement === "tab" && (
               <div
-                role="alert"
-                data-testid="reconnect-error"
                 style={{
-                  position: "absolute",
-                  top: 12,
-                  left: 12,
-                  zIndex: 20,
-                  maxWidth: 360,
-                  padding: "8px 10px",
-                  borderRadius: 6,
-                  border: "1px solid #FCA5A5",
-                  background: "#FEF2F2",
-                  color: "#991B1B",
-                  fontSize: 12,
-                  boxShadow: "0 2px 8px rgba(15,23,42,0.12)",
+                  display: "flex",
+                  gap: 8,
+                  padding: "8px 12px",
+                  borderBottom: "1px solid #E2E8F0",
+                  background: "white",
                 }}
+                data-testid="workflow-editor-surface-tabs"
               >
-                {reconnectError}
+                <SurfaceTab
+                  active={activeSurface === "graph"}
+                  onClick={() => setActiveSurface("graph")}
+                >
+                  {mergedMessages.editorView.graph}
+                </SurfaceTab>
+                <SurfaceTab
+                  active={activeSurface === "json"}
+                  onClick={() => setActiveSurface("json")}
+                >
+                  {mergedMessages.editorView.json}
+                </SurfaceTab>
               </div>
             )}
-            {state.activeWorkflow && (() => {
-              const comments = state.document.meta.workflowUi[state.activeWorkflow!]?.comments;
-              if (!comments) return null;
-              return Object.values(comments).map((c) => (
-                <CommentNode
-                  key={c.id}
-                  comment={c}
-                  disabled={readOnly}
-                  onUpdate={(updates) =>
-                    actions.dispatch({
-                      op: "updateComment",
-                      workflow: state.activeWorkflow!,
-                      commentId: c.id,
-                      updates,
-                    })
-                  }
-                  onRemove={() =>
-                    actions.dispatch({
-                      op: "removeComment",
-                      workflow: state.activeWorkflow!,
-                      commentId: c.id,
-                    })
-                  }
-                />
-              ));
-            })()}
+            {enableJsonEditor && jsonEditorPlacement === "split" ? (
+              <div
+                style={{
+                  flex: 1,
+                  minHeight: 0,
+                  minWidth: 0,
+                  display: "grid",
+                  gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+                }}
+                data-testid="workflow-editor-split-view"
+              >
+                {graphPane}
+                <div style={{ borderLeft: "1px solid #E2E8F0", minWidth: 0 }}>{jsonPane}</div>
+              </div>
+            ) : (
+              <div
+                style={{
+                  flex: 1,
+                  minHeight: 0,
+                  minWidth: 0,
+                  position: "relative",
+                  display: "flex",
+                  flexDirection: "column",
+                }}
+              >
+                {graphVisible ? (
+                  <div style={{ flex: 1, minHeight: 0, minWidth: 0 }}>
+                    {graphPane}
+                  </div>
+                ) : null}
+                {enableJsonEditor ? (
+                  <div
+                    style={{
+                      flex: activeSurface === "json" ? 1 : undefined,
+                      minHeight: 0,
+                      minWidth: 0,
+                      height: "100%",
+                      display: activeSurface === "json" ? "block" : "none",
+                    }}
+                  >
+                    {jsonPane}
+                  </div>
+                ) : null}
+              </div>
+            )}
           </div>
           {chrome?.inspector !== false && (
-          <Inspector
-            document={state.document}
-            selection={state.selection}
-            issues={derived.issues}
-            readOnly={readOnly}
-            onDispatch={dispatch}
-            onSelectionChange={handleSelectionChange}
-            onRequestDeleteState={requestDeleteState}
-          />
+            <Inspector
+              document={state.document}
+              selection={state.selection}
+              issues={derived.issues}
+              readOnly={readOnly}
+              onDispatch={dispatch}
+              onSelectionChange={handleSelectionChange}
+              onRequestDeleteState={requestDeleteState}
+            />
           )}
         </div>
         {pendingAddState && state.activeWorkflow && (
@@ -822,6 +978,56 @@ function normalizeAnchorPair(anchors: EdgeAnchorPair): EdgeAnchorPair | null {
 
 function sameAnchors(a: EdgeAnchorPair | undefined, b: EdgeAnchorPair | undefined): boolean {
   return a?.source === b?.source && a?.target === b?.target;
+}
+
+function workflowForSelection(
+  doc: WorkflowEditorDocument,
+  selection: Selection,
+): string | null {
+  if (!selection) return null;
+  if (selection.kind === "workflow" || selection.kind === "state") return selection.workflow;
+  if (selection.kind === "transition") {
+    return doc.meta.ids.transitions[selection.transitionUuid]?.workflow ?? null;
+  }
+  if (selection.kind === "processor") {
+    return doc.meta.ids.processors[selection.processorUuid]?.workflow ?? null;
+  }
+  if (selection.hostKind === "workflow") {
+    const workflow = Object.entries(doc.meta.ids.workflows).find(
+      ([, workflowId]) => workflowId === selection.hostId,
+    );
+    return workflow?.[0] ?? null;
+  }
+  return doc.meta.ids.transitions[selection.hostId]?.workflow ?? null;
+}
+
+function SurfaceTab({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        padding: "6px 12px",
+        borderRadius: 999,
+        border: `1px solid ${active ? "#0F172A" : "#CBD5E1"}`,
+        background: active ? "#0F172A" : "white",
+        color: active ? "white" : "#0F172A",
+        fontSize: 13,
+        fontWeight: 600,
+        cursor: "pointer",
+      }}
+    >
+      {children}
+    </button>
+  );
 }
 
 function transitionForUuid(doc: WorkflowEditorDocument, uuid: string) {

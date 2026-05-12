@@ -6,6 +6,7 @@ export interface ToolbarProps {
   canUndo: boolean;
   canRedo: boolean;
   readOnly: boolean;
+  saveDisabled?: boolean;
   onUndo: () => void;
   onRedo: () => void;
   onSave?: () => void;
@@ -20,6 +21,7 @@ export function Toolbar({
   canUndo,
   canRedo,
   readOnly,
+  saveDisabled = false,
   onUndo,
   onRedo,
   onSave,
@@ -132,7 +134,7 @@ export function Toolbar({
         <button
           type="button"
           onClick={onSave}
-          disabled={readOnly || derived.errorCount > 0}
+          disabled={readOnly || saveDisabled}
           style={{ ...btnStyle, background: "#0F172A", color: "white", borderColor: "#0F172A" }}
           data-testid="toolbar-save"
         >

@@ -63,6 +63,17 @@ vi.mock("reactflow", () => {
     data?: unknown;
     selected?: boolean;
   };
+  type MockEdgeComponentProps = {
+    id: string;
+    sourceX: number;
+    sourceY: number;
+    targetX: number;
+    targetY: number;
+    sourcePosition: (typeof Position)[keyof typeof Position];
+    targetPosition: (typeof Position)[keyof typeof Position];
+    data?: unknown;
+    selected?: boolean;
+  };
 
   const sizeOf = (node: MockNode) => ({
     width: node.width ?? node.style?.width ?? 160,
@@ -117,7 +128,7 @@ vi.mock("reactflow", () => {
   }: {
     nodes?: MockNode[];
     edges?: MockEdge[];
-    edgeTypes?: Record<string, React.ComponentType<any>>;
+    edgeTypes?: Record<string, React.ComponentType<MockEdgeComponentProps>>;
     onNodesChange?: (changes: unknown[]) => void;
     onNodeDragStart?: (e: unknown, node: unknown) => void;
     onNodeDrag?: (e: unknown, node: unknown) => void;
@@ -338,6 +349,32 @@ const SELF_LOOP = JSON.stringify({
       states: {
         approved: {
           transitions: [{ name: "retry_here", next: "approved", manual: true, disabled: false }],
+        },
+      },
+    },
+  ],
+});
+
+const DENSE_SELF_LOOP_RETARGET = JSON.stringify({
+  importMode: "MERGE",
+  workflows: [
+    {
+      version: "1.0",
+      name: "wf",
+      initialState: "new",
+      active: true,
+      states: {
+        new: {
+          transitions: [{ name: "to_active", next: "active", manual: false, disabled: false }],
+        },
+        active: {
+          transitions: [{ name: "to_approved", next: "approved", manual: true, disabled: false }],
+        },
+        approved: {
+          transitions: [{ name: "to_archived", next: "archived", manual: false, disabled: false }],
+        },
+        archived: {
+          transitions: [{ name: "reactivate", next: "active", manual: true, disabled: false }],
         },
       },
     },
@@ -638,6 +675,83 @@ describe("auto handle routing", () => {
     const loopPath = screen.getByTestId(`rf-edge-path-${loopId}`).getAttribute("d");
     expect(loopPath).toBe("M 200 280 L 200 308 L 308 308 L 308 192 L 200 192 L 200 220");
   });
+
+  it("updates a normal transition into a visible self-loop when retargeted to its own state", async () => {
+    const doc = fixture(TWO_STATE_CONNECTED);
+    const startId = stateUuid(doc, "wf", "start");
+    const endId = stateUuid(doc, "wf", "end");
+    const loopId = transitionUuid(doc, "wf", "start");
+
+    vi.mocked(layoutGraph).mockResolvedValue({
+      positions: new Map([
+        [startId, { id: startId, x: 100, y: 100, width: 160, height: 60 }],
+        [endId, { id: endId, x: 100, y: 300, width: 160, height: 60 }],
+      ]),
+      edges: new Map(),
+      width: 480,
+      height: 480,
+      preset: "configuratorReadable",
+    });
+
+    render(<WorkflowEditor document={doc} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`rf-edge-path-${loopId}`).getAttribute("d")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByTestId(`rf-edge-label-${loopId}`));
+    fireEvent.change(screen.getByTestId("inspector-transition-next"), {
+      target: { value: "start" },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`rf-edge-path-${loopId}`).getAttribute("d")).toBe(
+        "M 180 160 L 180 188 L 288 188 L 288 72 L 180 72 L 180 100",
+      );
+    });
+  });
+
+  it("keeps a retargeted self-loop visible on a dense state", async () => {
+    const doc = fixture(DENSE_SELF_LOOP_RETARGET);
+    const newId = stateUuid(doc, "wf", "new");
+    const activeId = stateUuid(doc, "wf", "active");
+    const approvedId = stateUuid(doc, "wf", "approved");
+    const archivedId = stateUuid(doc, "wf", "archived");
+    const loopId = transitionUuid(doc, "wf", "approved");
+
+    vi.mocked(layoutGraph).mockResolvedValue({
+      positions: new Map([
+        [newId, { id: newId, x: 120, y: 20, width: 160, height: 60 }],
+        [activeId, { id: activeId, x: 120, y: 120, width: 160, height: 60 }],
+        [approvedId, { id: approvedId, x: 120, y: 220, width: 160, height: 60 }],
+        [archivedId, { id: archivedId, x: 120, y: 360, width: 160, height: 60 }],
+      ]),
+      edges: new Map(),
+      width: 480,
+      height: 520,
+      preset: "configuratorReadable",
+    });
+
+    render(<WorkflowEditor document={doc} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`rf-edge-path-${loopId}`).getAttribute("d")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByTestId(`rf-edge-label-${loopId}`));
+    fireEvent.change(screen.getByTestId("inspector-transition-next"), {
+      target: { value: "approved" },
+    });
+
+    await waitFor(() => {
+      const loopEdge = rfCallbacks.latestEdges?.find((edge) => edge.id === loopId);
+      expect(loopEdge?.sourceHandle).toBe("bottom");
+      expect(loopEdge?.targetHandle).toBe("top");
+      expect(screen.getByTestId(`rf-edge-path-${loopId}`).getAttribute("d")).toBe(
+        "M 200 280 L 200 308 L 308 308 L 308 192 L 200 192 L 200 220",
+      );
+    });
+  });
 });
 
 // ── Tests: position persistence ──────────────────────────────────────────────
@@ -732,6 +846,72 @@ describe("node drag — position persistence", () => {
         pinned: [expect.objectContaining({ x: 300, y: 200 })],
       }),
     );
+  });
+
+  it("round-trips edge anchors through localStorage persistence", async () => {
+    const doc = fixture(TWO_STATE_CONNECTED);
+    const edgeId = transitionUuid(doc, "wf", "start");
+    doc.meta.workflowUi.wf = {
+      edgeAnchors: {
+        [edgeId]: { source: "right", target: "left" },
+      },
+    };
+
+    render(<WorkflowEditor document={doc} localStorageKey="test-edge-anchors" />);
+
+    await waitFor(() => {
+      const stored = JSON.parse(localStorage.getItem("test-edge-anchors") ?? "{}");
+      expect(stored.wf?.edgeAnchors?.[edgeId]).toEqual({ source: "right", target: "left" });
+    });
+
+    cleanup();
+
+    let latestDoc: WorkflowEditorDocument | undefined;
+    render(
+      <WorkflowEditor
+        document={fixture(TWO_STATE_CONNECTED)}
+        localStorageKey="test-edge-anchors"
+        onChange={(d) => { latestDoc = d; }}
+      />,
+    );
+
+    expect(latestDoc?.meta.workflowUi.wf?.edgeAnchors?.[edgeId]).toEqual({
+      source: "right",
+      target: "left",
+    });
+  });
+
+  it("round-trips viewports through localStorage persistence", async () => {
+    const doc = fixture(TWO_STATE_CONNECTED);
+    doc.meta.workflowUi.wf = {
+      viewports: {
+        vertical: { x: 12.35, y: -9.88, zoom: 0.765 },
+      },
+    };
+
+    render(<WorkflowEditor document={doc} localStorageKey="test-viewports" />);
+
+    await waitFor(() => {
+      const stored = JSON.parse(localStorage.getItem("test-viewports") ?? "{}");
+      expect(stored.wf?.viewports?.vertical).toEqual({ x: 12.35, y: -9.88, zoom: 0.765 });
+    });
+
+    cleanup();
+
+    let latestDoc: WorkflowEditorDocument | undefined;
+    render(
+      <WorkflowEditor
+        document={fixture(TWO_STATE_CONNECTED)}
+        localStorageKey="test-viewports"
+        onChange={(d) => { latestDoc = d; }}
+      />,
+    );
+
+    expect(latestDoc?.meta.workflowUi.wf?.viewports?.vertical).toEqual({
+      x: 12.35,
+      y: -9.88,
+      zoom: 0.765,
+    });
   });
 });
 

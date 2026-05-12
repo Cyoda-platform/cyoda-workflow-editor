@@ -9,6 +9,8 @@ validation markers, patch lifting, and canvas ↔ JSON selection sync.
 npm install @cyoda/workflow-core @cyoda/workflow-monaco monaco-editor
 ```
 
+Supported `monaco-editor` versions: `>=0.45 <0.53` (the demo currently runs on `0.52.x`).
+
 ## Usage
 
 ```ts
@@ -76,7 +78,7 @@ the editor marks the save button as disabled.
 
 - No runtime `monaco-editor` import — all Monaco surfaces use structural
   `MonacoLike` / `TextModelLike` / `EditorLike` interfaces.
-- Consumers supply their own Monaco build.
+- Consumers supply their own Monaco build and pass a compatible runtime.
 
 ## Documentation
 

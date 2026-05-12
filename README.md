@@ -180,11 +180,62 @@ export function EditorPage() {
 | `messages` | `PartialMessages` | English | i18n override. |
 | `layoutOptions` | `LayoutOptions` | – | ELK layout preset and orientation. |
 | `chrome` | `ChromeOptions` | all `true` | Toggle toolbar / tabs / inspector / minimap / controls. |
-| `localStorageKey` | `string \| null` | `"cyoda-editor-layout"` | Key for layout+comment persistence. Pass `null` to disable. |
+| `localStorageKey` | `string \| null` | `"cyoda-editor-layout"` | Key for editor metadata persistence (`layout`, `comments`, `edgeAnchors`, `viewports`). Pass `null` to disable. |
 | `layoutMetadata` | `WorkflowUiMeta` | – | Host-controlled metadata (overrides localStorage). |
-| `onLayoutMetadataChange` | `(meta: WorkflowUiMeta) => void` | – | Called when layout or comments change. Use to persist externally. |
+| `onLayoutMetadataChange` | `(meta: WorkflowUiMeta) => void` | – | Called when editor-only metadata changes. Use to persist externally. |
 | `onChange` | `(doc: WorkflowEditorDocument) => void` | – | Fires after every patch. |
 | `onSave` | `(doc: WorkflowEditorDocument) => void` | – | Fires on Ctrl/Cmd+S when validation passes. |
+| `enableJsonEditor` | `boolean` | `false` | Enables the Monaco-backed JSON editor surface. |
+| `jsonEditorPlacement` | `"tab" \| "split"` | `"tab"` | Places JSON in a tab or split pane. |
+| `jsonEditor` | `WorkflowJsonEditorConfig \| null` | `null` | Host-supplied Monaco runtime/configuration. |
+| `onJsonStatusChange` | `(status: JsonEditStatus) => void` | – | Reports invalid JSON/schema or successful apply state. |
+
+### JSON editor
+
+`WorkflowEditor` can embed a Monaco JSON editor that stays synchronized with the graph.
+
+- Host-supplied runtime/config: pass your Monaco runtime through `jsonEditor.monaco`; no Monaco runtime is bundled by `@cyoda/workflow-react`.
+- Invalid JSON handling: bad syntax or schema never mutates the canonical document; `onJsonStatusChange` reports the current state and save remains blocked while invalid.
+- Graph-to-JSON sync: canvas and inspector edits update the current Monaco model.
+- JSON-to-graph sync: valid JSON emits a canonical session patch and updates the graph without leaking editor metadata into exported workflow JSON.
+- Metadata exclusion: `layout`, `comments`, `edgeAnchors`, and `viewports` stay in `doc.meta.workflowUi` only.
+
+Minimal setup:
+
+```tsx
+import * as monaco from "monaco-editor";
+import { parseImportPayload } from "@cyoda/workflow-core";
+import {
+  WorkflowEditor,
+  type JsonEditStatus,
+  type WorkflowJsonEditorConfig,
+} from "@cyoda/workflow-react";
+import "reactflow/dist/style.css";
+
+const { document } = parseImportPayload(workflowJson);
+if (!document) throw new Error("Invalid workflow JSON");
+
+const jsonEditor: WorkflowJsonEditorConfig = {
+  monaco,
+  debounceMs: 150,
+};
+
+export function EditorPage() {
+  const onJsonStatusChange = (status: JsonEditStatus) => {
+    console.log(status.status);
+  };
+
+  return (
+    <WorkflowEditor
+      document={document}
+      enableJsonEditor
+      jsonEditorPlacement="split"
+      jsonEditor={jsonEditor}
+      onJsonStatusChange={onJsonStatusChange}
+    />
+  );
+}
+```
 
 ### Full editor capabilities
 

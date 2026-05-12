@@ -1,8 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
-import jsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";
-import * as monaco from "monaco-editor";
-import "monaco-editor/min/vs/editor/editor.main.css";
 import { applyPatch, type ValidationIssue, type WorkflowEditorDocument } from "@cyoda/workflow-core";
 import { projectToGraph } from "@cyoda/workflow-graph";
 import {
@@ -15,17 +11,11 @@ import {
 import { WorkflowViewer } from "@cyoda/workflow-viewer";
 import { DocumentStats, FixtureSelector, IssuesPanel, JsonBlock, PageIntro } from "../components/DemoUi.js";
 import { fixtureBySlug, fixturesFor } from "../examples/fixtureCatalog.js";
+import { getMonacoRuntime } from "../lib/monacoRuntime.js";
 import { loadFixture, serializeDocument } from "../lib/workflowDemo.js";
 
-declare global {
-  interface Window {
-    MonacoEnvironment?: {
-      getWorker(_: string, label: string): Worker;
-    };
-  }
-}
-
 export function MonacoPlaygroundPage() {
+  const monaco = useMemo(() => getMonacoRuntime(), []);
   const fixtures = fixturesFor("monaco");
   const [selectedSlug, setSelectedSlug] = useState(fixtures[0]?.slug ?? "");
   const selectedFixture = fixtureBySlug(selectedSlug) ?? fixtures[0];
@@ -49,15 +39,6 @@ export function MonacoPlaygroundPage() {
 
   useEffect(() => {
     if (!containerRef.current || editorRef.current) return;
-
-    window.MonacoEnvironment = {
-      getWorker(_workerId: string, label: string) {
-        if (label === "json") {
-          return new jsonWorker();
-        }
-        return new editorWorker();
-      },
-    };
 
     schemaHandleRef.current = registerWorkflowSchema(monaco);
     const model = monaco.editor.createModel(
@@ -107,7 +88,7 @@ export function MonacoPlaygroundPage() {
       model.dispose();
       schemaHandleRef.current?.dispose();
     };
-  }, [initialDocument, loaded?.text, selectedFixture.slug]);
+  }, [initialDocument, loaded?.text, monaco, selectedFixture.slug]);
 
   useEffect(() => {
     if (!controllerRef.current) return;

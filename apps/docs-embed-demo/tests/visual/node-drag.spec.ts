@@ -1,12 +1,22 @@
 import { expect, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 
-function edgePaths(page: import("@playwright/test").Page) {
+function edgePaths(page: Page) {
   return page.locator("path.react-flow__edge-path");
 }
 
-async function pathData(page: import("@playwright/test").Page): Promise<string[]> {
+async function pathData(page: Page): Promise<string[]> {
   return edgePaths(page).evaluateAll((paths) =>
     paths.map((path) => path.getAttribute("d") ?? ""),
+  );
+}
+
+async function pathBoxes(page: Page): Promise<Array<{ width: number; height: number }>> {
+  return edgePaths(page).evaluateAll((paths) =>
+    paths.map((path) => {
+      const box = (path as SVGGraphicsElement).getBBox();
+      return { width: box.width, height: box.height };
+    }),
   );
 }
 
@@ -76,4 +86,24 @@ test("editor drag-connect preserves the drawn source-to-target direction", async
 
   await expect(page.getByTestId("dragconnect-name")).toBeVisible();
   await expect(page.getByTestId("modal-frame")).toContainText("new → active");
+});
+
+test("editor retargeting to the same state keeps a visible self-loop on the graph", async ({ page }) => {
+  await page.goto("/editor");
+  await expect(page.getByTestId("editor-page")).toBeVisible();
+  await expect.poll(async () => (await pathData(page)).filter(Boolean).length).toBeGreaterThan(0);
+
+  await page
+    .locator('[data-testid^="rf-edge-label-"]')
+    .filter({ hasText: "TO_ARCHIVED" })
+    .first()
+    .click();
+  await expect(page.getByTestId("inspector-transition-next")).toBeVisible();
+  await page.getByTestId("inspector-transition-next").selectOption("approved");
+
+  await expect(page.getByTestId("editor-page")).toContainText('"next": "approved"');
+  await expect.poll(async () => {
+    const boxes = await pathBoxes(page);
+    return boxes.some((box) => box.width > 80 && box.height > 80);
+  }).toBe(true);
 });

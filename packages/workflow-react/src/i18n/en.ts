@@ -56,6 +56,18 @@ export const defaultMessages = {
     closeTab: "Close",
     untitled: "(unnamed)",
   },
+  editorView: {
+    graph: "Graph",
+    json: "JSON",
+    unavailable:
+      "Monaco runtime not configured. Pass jsonEditor.monaco to enable direct JSON editing.",
+    invalidJson:
+      "JSON syntax is invalid. The graph is still showing the last valid workflow.",
+    invalidSchema:
+      "JSON does not match the workflow schema. The graph is still showing the last valid workflow.",
+    semanticErrors:
+      "The graph has updated, but JSON validation still has semantic errors. Save stays blocked until they are resolved.",
+  },
   saveConfirm: {
     title: "Save workflows?",
     modeLabel: "Import mode",

@@ -3,17 +3,21 @@ import { WorkflowEditor, type ChromeOptions } from "@cyoda/workflow-react";
 import type { WorkflowEditorDocument } from "@cyoda/workflow-core";
 import { DocumentStats, FixtureSelector, JsonBlock, PageIntro } from "../components/DemoUi.js";
 import { fixtureBySlug, fixturesFor } from "../examples/fixtureCatalog.js";
+import { getMonacoRuntime } from "../lib/monacoRuntime.js";
 import { loadFixture, serializeDocument } from "../lib/workflowDemo.js";
 
 type EditorModeOption = "viewer" | "playground" | "editor";
+type JsonPlacement = "tab" | "split";
 
 const chromeKeys: Array<keyof ChromeOptions> = ["toolbar", "tabs", "inspector", "minimap", "controls"];
 
 export function EditorShowcasePage() {
+  const monaco = useMemo(() => getMonacoRuntime(), []);
   const fixtures = fixturesFor("editor");
   const [selectedSlug, setSelectedSlug] = useState(fixtures[0]?.slug ?? "");
   const [mode, setMode] = useState<EditorModeOption>("editor");
   const [docVersion, setDocVersion] = useState(0);
+  const [jsonPlacement, setJsonPlacement] = useState<JsonPlacement>("tab");
   const [chrome, setChrome] = useState<ChromeOptions>({
     toolbar: true,
     tabs: true,
@@ -72,6 +76,7 @@ export function EditorShowcasePage() {
             label: "Chrome enabled",
             value: chromeKeys.filter((key) => chrome[key] !== false).length,
           },
+          { label: "JSON view", value: jsonPlacement },
         ]}
       />
 
@@ -86,6 +91,14 @@ export function EditorShowcasePage() {
               <option value="viewer">viewer</option>
               <option value="playground">playground</option>
               <option value="editor">editor</option>
+            </select>
+            <select
+              value={jsonPlacement}
+              onChange={(event) => setJsonPlacement(event.target.value as JsonPlacement)}
+              className="control-select"
+            >
+              <option value="tab">graph/json tabs</option>
+              <option value="split">split graph + json</option>
             </select>
             <button type="button" className="action-button" onClick={resetDocument}>
               Reset editor state
@@ -126,10 +139,13 @@ export function EditorShowcasePage() {
         </div>
         <div className="editor-shell" data-testid="workflow-editor-shell">
           <WorkflowEditor
-            key={`${selectedFixture.slug}-${mode}-${docVersion}`}
+            key={`${selectedFixture.slug}-${mode}-${jsonPlacement}-${docVersion}`}
             document={currentDocument}
             mode={mode}
             chrome={chrome}
+            enableJsonEditor
+            jsonEditorPlacement={jsonPlacement}
+            jsonEditor={{ monaco, modelUri: `cyoda://editor-showcase/${selectedFixture.slug}.json` }}
             onChange={setCurrentDocument}
             onSave={() => {}}
           />

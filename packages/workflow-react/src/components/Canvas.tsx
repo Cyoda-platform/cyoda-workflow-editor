@@ -303,6 +303,18 @@ function computeAutoHandles(
   const grouped = new Map<string, EndpointAssignment[]>();
 
   for (const edge of edges) {
+    if (edge.isSelf) {
+      assignments.set(
+        `${edge.id}:source`,
+        edge.sourceAnchor ?? selfLoopHandleId("source", orientation),
+      );
+      assignments.set(
+        `${edge.id}:target`,
+        edge.targetAnchor ?? selfLoopHandleId("target", orientation),
+      );
+      continue;
+    }
+
     const sourceSide = anchorHandleId(
       edge.sourceAnchor,
       "source",
@@ -359,6 +371,16 @@ function computeAutoHandles(
   }
 
   return assignments;
+}
+
+function selfLoopHandleId(
+  role: "source" | "target",
+  orientation: "vertical" | "horizontal",
+): string {
+  if (orientation === "horizontal") {
+    return role === "source" ? "right" : "left";
+  }
+  return role === "source" ? "bottom" : "top";
 }
 
 function pushAssignment(

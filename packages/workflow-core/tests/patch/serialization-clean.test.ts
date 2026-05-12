@@ -74,6 +74,19 @@ describe("serialization excludes editor metadata", () => {
     expect(serialized).not.toContain("workflowUi");
   });
 
+  test("viewports do not appear in exported JSON", () => {
+    const doc = baseDoc();
+    doc.meta.workflowUi.wf = {
+      viewports: {
+        vertical: { x: 10, y: 20, zoom: 0.75 },
+      },
+    };
+    const serialized = serializeImportPayload(doc);
+    expect(serialized).not.toContain("viewports");
+    expect(serialized).not.toContain('"zoom"');
+    expect(serialized).not.toContain("workflowUi");
+  });
+
   test("serialized JSON round-trips to same output after layout changes", () => {
     const doc = baseDoc();
     const docWithLayout = applyPatch(doc, {
