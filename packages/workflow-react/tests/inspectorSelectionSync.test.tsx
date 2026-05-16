@@ -129,4 +129,21 @@ describe("inspector selection sync", () => {
     fireEvent.click(screen.getByTestId("select-transition-active"));
     expect((screen.getByTestId("inspector-transition-name") as HTMLInputElement).value).toBe("to_approved");
   });
+
+  it("keeps the transition inspector open when adding a processor", () => {
+    currentDoc = fixtureDoc();
+    render(<WorkflowEditor document={currentDoc} mode="editor" />);
+
+    fireEvent.click(screen.getByTestId("select-transition-new"));
+    fireEvent.click(screen.getByTestId("inspector-add-processor"));
+
+    expect((screen.getByTestId("inspector-transition-name") as HTMLInputElement).value).toBe(
+      "to_active",
+    );
+    expect(screen.getByTestId("inspector-processor-0")).toBeTruthy();
+    expect(screen.getByTestId("inspector-inline-processor-0")).toBeTruthy();
+    expect((screen.getByTestId("inspector-processor-name") as HTMLInputElement).value).toBe(
+      "proc1",
+    );
+  });
 });

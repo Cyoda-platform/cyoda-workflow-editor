@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { CriteriaEditorPage } from "./pages/CriteriaEditorPage.js";
 import { EmbedViewerPage } from "./pages/EmbedViewerPage.js";
 import { EditorShowcasePage } from "./pages/EditorShowcasePage.js";
 import { HomePage } from "./pages/HomePage.js";
@@ -13,6 +14,7 @@ type RoutePath =
   | "/viewer"
   | "/layout"
   | "/editor"
+  | "/criteria"
   | "/monaco"
   | "/save-flow"
   | "/utilities"
@@ -46,6 +48,11 @@ const routes: RouteDefinition[] = [
     description: "Full editor: states, transitions, criteria, processors, layout, comments, undo/redo, and clean exported JSON.",
   },
   {
+    path: "/criteria",
+    label: "Criteria editor",
+    description: "Demo and regression page for the criterion editor with model-schema autocomplete wired to the StructuredTrade entity sample.",
+  },
+  {
     path: "/monaco",
     label: "Monaco playground",
     description: "Schema, markers, patch lifting, and selection sync.",
@@ -73,6 +80,7 @@ function normalizePath(pathname: string): RoutePath | null {
   if (pathname === "/viewer") return "/viewer";
   if (pathname === "/layout") return "/layout";
   if (pathname === "/editor") return "/editor";
+  if (pathname === "/criteria") return "/criteria";
   if (pathname === "/monaco") return "/monaco";
   if (pathname === "/save-flow") return "/save-flow";
   if (pathname === "/utilities") return "/utilities";
@@ -134,6 +142,8 @@ function CurrentPage({ path }: { path: RoutePath }) {
       return <LayoutShowcasePage />;
     case "/editor":
       return <EditorShowcasePage />;
+    case "/criteria":
+      return <CriteriaEditorPage />;
     case "/monaco":
       return <MonacoPlaygroundPage />;
     case "/save-flow":

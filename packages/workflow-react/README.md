@@ -40,9 +40,10 @@ export function App() {
   collision guard, retarget via inspector dropdown, move to a different
   source state (`moveTransitionSource`), toggle manual/disabled, reorder,
   delete.
-- **Criteria**: full structured editors for `simple`, `group` (recursive),
-  `function`, `lifecycle`, and `array` types; raw JSON escape hatch;
-  draft editing (invalid local state never corrupts canonical document).
+- **Criteria**: compact inspector summary cards open a focused modal editor
+  for `simple`, `group` (recursive), `function`, `lifecycle`, and `array`
+  types; raw JSON escape hatch; draft editing where Apply commits one patch
+  and Cancel discards local changes.
 - **Processors**: `externalized` (all config fields) and `scheduled`
   (delayMs, transition, timeoutMs); type switcher; reorder.
 - **Manual layout**: drag states to persist positions; Reset Layout /

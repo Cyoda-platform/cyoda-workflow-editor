@@ -257,11 +257,14 @@ export function EditorPage() {
 
 **Criteria** (on each transition)
 - Add / edit / delete criterion.
+- The inspector shows a compact summary card; add/edit opens a focused
+  modal editor.
 - Structured editors for all five types: `simple`, `group`, `function`,
   `lifecycle`, `array`.
 - Recursive editing of nested `group` conditions (add/remove/reorder).
-- Raw JSON escape hatch with schema validation before commit.
-- Draft editing: invalid local state does not corrupt the canonical document.
+- Raw JSON escape hatch inside the modal.
+- Draft editing: Apply commits one criterion patch/undo step; Cancel discards
+  local changes, and invalid local state never corrupts the canonical document.
 
 **Processors** (on each transition)
 - Add / edit / delete / reorder processors.

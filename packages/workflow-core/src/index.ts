@@ -142,3 +142,22 @@ export {
   registerMigration,
 } from "./migrate/index.js";
 export type { MigrationEntry, MigrationFn } from "./migrate/index.js";
+
+export {
+  CRITERION_DEPTH_WARNING_THRESHOLD,
+  MAX_CRITERION_DEPTH,
+  OPERATOR_GROUPS,
+  OPERATOR_VALUE_SHAPE,
+  SUPPORTED_GROUP_OPERATORS,
+  SUPPORTED_SIMPLE_OPERATORS,
+  UNSUPPORTED_OPERATORS,
+  describeCriterion,
+  validateJsonPathSubset,
+} from "./criteria/index.js";
+export type {
+  JsonPathRejectReason,
+  JsonPathValidationResult,
+  OperatorGroup,
+  OperatorGroupId,
+  OperatorValueShape,
+} from "./criteria/index.js";

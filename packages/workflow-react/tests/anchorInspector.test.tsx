@@ -31,9 +31,111 @@ function loadDoc() {
   return document;
 }
 
+function loadDocWithProcessor() {
+  const { document } = parseImportPayload(
+    JSON.stringify({
+      importMode: "MERGE",
+      workflows: [
+        {
+          version: "1.0",
+          name: "wf",
+          initialState: "a",
+          active: true,
+          states: {
+            a: {
+              transitions: [
+                {
+                  name: "go",
+                  next: "b",
+                  manual: false,
+                  disabled: false,
+                  processors: [
+                    {
+                      type: "externalized",
+                      name: "notify",
+                      executionMode: "ASYNC_NEW_TX",
+                      config: { attachEntity: false, responseTimeoutMs: 5000 },
+                    },
+                  ],
+                },
+              ],
+            },
+            b: { transitions: [] },
+          },
+        },
+      ],
+    }),
+  );
+  if (!document) throw new Error("fixture parse failed");
+  return document;
+}
+
 afterEach(() => cleanup());
 
 describe("TransitionForm anchor dropdowns", () => {
+  it("groups transition criteria and processes into clear sections", () => {
+    const doc = loadDoc();
+    const workflow = doc.session.workflows[0]!;
+    const uuid = Object.keys(doc.meta.ids.transitions)[0]!;
+    const transition = workflow.states["a"]!.transitions[0]!;
+    const onDispatch = vi.fn<(patch: DomainPatch) => void>();
+
+    const { getByTestId, getByText } = render(
+      <I18nContext.Provider value={defaultMessages}>
+        <TransitionForm
+          workflow={workflow}
+          stateCode="a"
+          transition={transition}
+          transitionUuid={uuid}
+          transitionIndex={0}
+          processorUuids={[]}
+          anchors={undefined}
+          disabled={false}
+          onDispatch={onDispatch}
+        />
+      </I18nContext.Provider>,
+    );
+
+    expect(getByTestId("inspector-transition-criteria-section")).toBeTruthy();
+    expect(getByText("Criteria")).toBeTruthy();
+    expect(getByTestId("inspector-transition-processes-section")).toBeTruthy();
+    expect(getByText("Processes (0)")).toBeTruthy();
+  });
+
+  it("edits a processor inline inside the transition processes section", () => {
+    const doc = loadDocWithProcessor();
+    const workflow = doc.session.workflows[0]!;
+    const transitionUuid = Object.keys(doc.meta.ids.transitions)[0]!;
+    const processorUuid = Object.keys(doc.meta.ids.processors)[0]!;
+    const transition = workflow.states["a"]!.transitions[0]!;
+    const onDispatch = vi.fn<(patch: DomainPatch) => void>();
+
+    const { getByTestId, queryByTestId } = render(
+      <I18nContext.Provider value={defaultMessages}>
+        <TransitionForm
+          workflow={workflow}
+          stateCode="a"
+          transition={transition}
+          transitionUuid={transitionUuid}
+          transitionIndex={0}
+          processorUuids={[processorUuid]}
+          anchors={undefined}
+          disabled={false}
+          onDispatch={onDispatch}
+        />
+      </I18nContext.Provider>,
+    );
+
+    expect(queryByTestId("inspector-processor-name")).toBeNull();
+
+    fireEvent.click(getByTestId("inspector-processor-0"));
+
+    expect(getByTestId("inspector-inline-processor-0")).toBeTruthy();
+    expect((getByTestId("inspector-processor-name") as HTMLInputElement).value).toBe(
+      "notify",
+    );
+  });
+
   it("dispatches setEdgeAnchors with the chosen side", () => {
     const doc = loadDoc();
     const workflow = doc.session.workflows[0]!;
@@ -49,10 +151,10 @@ describe("TransitionForm anchor dropdowns", () => {
           transition={transition}
           transitionUuid={uuid}
           transitionIndex={0}
+          processorUuids={[]}
           anchors={undefined}
           disabled={false}
           onDispatch={onDispatch}
-          onSelectProcessor={() => {}}
         />
       </I18nContext.Provider>,
     );
@@ -82,10 +184,10 @@ describe("TransitionForm anchor dropdowns", () => {
           transition={transition}
           transitionUuid={uuid}
           transitionIndex={0}
+          processorUuids={[]}
           anchors={{ source: "right" }}
           disabled={false}
           onDispatch={onDispatch}
-          onSelectProcessor={() => {}}
         />
       </I18nContext.Provider>,
     );

@@ -60,6 +60,12 @@ export function normalizeWorkflowInput(workflow: Workflow): Workflow {
 export function normalizeCriterion(criterion: Criterion): Criterion {
   switch (criterion.type) {
     case "simple":
+      // Spec §4.4: IS_NULL / NOT_NULL ignore `value` at runtime, but OpenAPI
+      // marks it required. Force value: null so internal state and wire form
+      // agree and round-trips stay exact.
+      if (criterion.operation === "IS_NULL" || criterion.operation === "NOT_NULL") {
+        return { ...criterion, value: null };
+      }
       return criterion;
     case "group":
       return { ...criterion, conditions: criterion.conditions.map(normalizeCriterion) };
@@ -78,6 +84,9 @@ export function normalizeCriterion(criterion: Criterion): Criterion {
       return out;
     }
     case "lifecycle":
+      if (criterion.operation === "IS_NULL" || criterion.operation === "NOT_NULL") {
+        return { ...criterion, value: null };
+      }
       return criterion;
     case "array":
       return criterion;

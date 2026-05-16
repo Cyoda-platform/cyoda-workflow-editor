@@ -6,7 +6,9 @@ import {
   type EdgeAnchor,
   type EdgeAnchorPair,
   type EditorViewport,
+  type EntityFieldHintProvider,
   type PatchTransaction,
+  invertPatch,
   PatchConflictError,
   type Workflow,
   type WorkflowEditorDocument,
@@ -76,6 +78,11 @@ export interface WorkflowEditorProps {
   jsonEditor?: WorkflowJsonEditorConfig | null;
   /** Reports JSON parse/schema/apply status for host UX. */
   onJsonStatusChange?: (status: JsonEditStatus) => void;
+  /**
+   * Optional model-schema autocomplete source for criterion jsonPath inputs.
+   * When omitted, jsonPath inputs render as plain free-text fields.
+   */
+  hintProvider?: EntityFieldHintProvider;
 }
 
 interface PendingDelete {
@@ -124,6 +131,7 @@ export function WorkflowEditor({
   jsonEditorPlacement = "tab",
   jsonEditor = null,
   onJsonStatusChange,
+  hintProvider,
 }: WorkflowEditorProps) {
   const mergedMessages = useMemo(() => mergeMessages(messages), [messages]);
 
@@ -159,6 +167,7 @@ export function WorkflowEditor({
   const selectionRef = useRef<Selection>(state.selection);
   const documentStateRef = useRef(state.document);
   const activeWorkflowRef = useRef(state.activeWorkflow);
+  const pendingSelectionRestoreRef = useRef<Selection>(null);
 
   useEffect(() => {
     selectionRef.current = state.selection;
@@ -207,8 +216,30 @@ export function WorkflowEditor({
   );
 
   const dispatch = useCallback(
-    (patch: DomainPatch) => actions.dispatch(patch),
-    [actions],
+    (patch: DomainPatch) => {
+      if (patch.op === "setCriterion" && patch.host.kind === "transition") {
+        const restoreSelection: Selection = {
+          kind: "transition",
+          transitionUuid: patch.host.transitionUuid,
+        };
+        pendingSelectionRestoreRef.current = restoreSelection;
+        window.setTimeout(() => {
+          if (sameSelection(pendingSelectionRestoreRef.current, restoreSelection)) {
+            actions.setSelection(restoreSelection);
+            pendingSelectionRestoreRef.current = null;
+          }
+        }, 50);
+        actions.dispatchTransaction({
+          summary: patch.criterion ? "Set criterion" : "Clear criterion",
+          patches: [patch],
+          inverses: [invertPatch(state.document, patch)],
+          selectionAfter: restoreSelection,
+        });
+        return;
+      }
+      actions.dispatch(patch);
+    },
+    [actions, state.document],
   );
   const handleJsonStatusChange = useCallback(
     (status: JsonEditStatus) => {
@@ -370,6 +401,11 @@ export function WorkflowEditor({
 
   const handleSelectionChange = useCallback(
     (selection: Selection) => {
+      const pendingRestore = pendingSelectionRestoreRef.current;
+      if (!selection && pendingRestore) {
+        return;
+      }
+      if (selection && pendingRestore) pendingSelectionRestoreRef.current = null;
       const workflow = workflowForSelection(documentStateRef.current, selection);
       if (workflow && workflow !== activeWorkflowRef.current) {
         actions.setActiveWorkflow(workflow);
@@ -790,6 +826,7 @@ export function WorkflowEditor({
               onDispatch={dispatch}
               onSelectionChange={handleSelectionChange}
               onRequestDeleteState={requestDeleteState}
+              {...(hintProvider ? { hintProvider } : {})}
             />
           )}
         </div>
@@ -978,6 +1015,30 @@ function normalizeAnchorPair(anchors: EdgeAnchorPair): EdgeAnchorPair | null {
 
 function sameAnchors(a: EdgeAnchorPair | undefined, b: EdgeAnchorPair | undefined): boolean {
   return a?.source === b?.source && a?.target === b?.target;
+}
+
+function sameSelection(a: Selection, b: Selection): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.kind !== b.kind) return false;
+  switch (a.kind) {
+    case "workflow":
+      return b.kind === "workflow" && a.workflow === b.workflow;
+    case "state":
+      return b.kind === "state" &&
+        a.workflow === b.workflow &&
+        a.stateCode === b.stateCode &&
+        a.nodeId === b.nodeId;
+    case "transition":
+      return b.kind === "transition" && a.transitionUuid === b.transitionUuid;
+    case "processor":
+      return b.kind === "processor" && a.processorUuid === b.processorUuid;
+    case "criterion":
+      return b.kind === "criterion" &&
+        a.hostKind === b.hostKind &&
+        a.hostId === b.hostId &&
+        a.path.length === b.path.length &&
+        a.path.every((part, index) => part === b.path[index]);
+  }
 }
 
 function workflowForSelection(

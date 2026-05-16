@@ -2,6 +2,7 @@ import kitchenSinkWorkflowRaw from "./workflows/kitchen-sink-workflows.json?raw"
 import sampleWorkflowRaw from "./workflows/sample-workflow.json?raw";
 import saveHarnessWorkflowRaw from "./workflows/save-harness-workflow.json?raw";
 import tradeSettlementWorkflowRaw from "./workflows/trade-settlement-workflow.json?raw";
+import tradeCriteriaDemoWorkflowRaw from "./workflows/trade-criteria-demo-workflow.json?raw";
 
 export type DemoCategory =
   | "viewer"
@@ -9,7 +10,8 @@ export type DemoCategory =
   | "editor"
   | "monaco"
   | "save"
-  | "utilities";
+  | "utilities"
+  | "criteria";
 
 export interface DemoFixture {
   slug: string;
@@ -60,6 +62,14 @@ export const demoFixtures: DemoFixture[] = [
     rawJson: tradeSettlementWorkflowRaw,
     categories: ["viewer", "layout", "editor", "monaco", "utilities"],
     tags: ["medium", "repair-loop", "post-trade"],
+  },
+  {
+    slug: "trade-criteria-demo",
+    label: "Trade criteria demo",
+    description: "Trade settlement variant that exercises every criterion shape: simple operators, group AND/OR/NOT, function with quick-exit, lifecycle, and array.",
+    rawJson: tradeCriteriaDemoWorkflowRaw,
+    categories: ["criteria"],
+    tags: ["criteria", "simple", "group", "function", "lifecycle", "array", "post-trade"],
   },
   {
     slug: "kitchen-sink",

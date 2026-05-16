@@ -54,7 +54,13 @@ export function outputCriterion(c: Criterion): Record<string, unknown> {
         jsonPath: c.jsonPath,
         operation: c.operation,
       };
-      if (c.value !== undefined) out["value"] = c.value;
+      // Spec §4.4: emit explicit null for IS_NULL/NOT_NULL to satisfy the
+      // OpenAPI `required` constraint on `value`.
+      if (c.operation === "IS_NULL" || c.operation === "NOT_NULL") {
+        out["value"] = null;
+      } else if (c.value !== undefined) {
+        out["value"] = c.value;
+      }
       return out;
     }
     case "group":
@@ -80,7 +86,11 @@ export function outputCriterion(c: Criterion): Record<string, unknown> {
         field: c.field,
         operation: c.operation,
       };
-      if (c.value !== undefined) out["value"] = c.value;
+      if (c.operation === "IS_NULL" || c.operation === "NOT_NULL") {
+        out["value"] = null;
+      } else if (c.value !== undefined) {
+        out["value"] = c.value;
+      }
       return out;
     }
     case "array":

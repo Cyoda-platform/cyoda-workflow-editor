@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type {
   DomainPatch,
+  EntityFieldHintProvider,
   ValidationIssue,
   WorkflowEditorDocument,
 } from "@cyoda/workflow-core";
@@ -12,6 +13,7 @@ import { WorkflowForm } from "./WorkflowForm.js";
 import { StateForm } from "./StateForm.js";
 import { TransitionForm } from "./TransitionForm.js";
 import { ProcessorForm } from "./ProcessorForm.js";
+import { FieldHintsProvider } from "./criteria/FieldHintsContext.js";
 
 export interface InspectorProps {
   document: WorkflowEditorDocument;
@@ -21,6 +23,11 @@ export interface InspectorProps {
   onDispatch: (patch: DomainPatch) => void;
   onSelectionChange: (sel: Selection) => void;
   onRequestDeleteState: (workflow: string, stateCode: string) => void;
+  /**
+   * Optional model-schema autocomplete source for criterion jsonPath inputs.
+   * When omitted, jsonPath inputs render as plain free-text fields.
+   */
+  hintProvider?: EntityFieldHintProvider;
 }
 
 function issueKeyForSelection(selection: Selection): string | null {
@@ -47,6 +54,7 @@ export function Inspector({
   onDispatch,
   onSelectionChange,
   onRequestDeleteState,
+  hintProvider,
 }: InspectorProps) {
   const messages = useMessages();
   const [tab, setTab] = useState<"properties" | "json">("properties");
@@ -61,6 +69,7 @@ export function Inspector({
   const breadcrumb = renderBreadcrumb(resolved);
 
   return (
+    <FieldHintsProvider provider={hintProvider} entity={doc.session.entity}>
     <aside
       style={{
         height: "100%",
@@ -117,6 +126,7 @@ export function Inspector({
                 transition={resolved.transition}
                 transitionUuid={resolved.transitionUuid}
                 transitionIndex={resolved.transitionIndex}
+                processorUuids={processorUuidsInOrder(doc, resolved.transitionUuid)}
                 anchors={
                   doc.meta.workflowUi[resolved.workflow.name]?.edgeAnchors?.[
                     resolved.transitionUuid
@@ -125,13 +135,7 @@ export function Inspector({
                 disabled={readOnly}
                 issues={selectionIssues}
                 onDispatch={onDispatch}
-                onSelectProcessor={(ordinalKey) => {
-                  const [, transitionUuid, indexStr] = ordinalKey.split(":");
-                  if (!transitionUuid || !indexStr) return;
-                  const procUuids = processorUuidsInOrder(doc, transitionUuid);
-                  const uuid = procUuids[Number.parseInt(indexStr, 10)];
-                  if (uuid) onSelectionChange({ kind: "processor", processorUuid: uuid });
-                }}
+                onSelectionChange={onSelectionChange}
               />
             )}
             {resolved?.kind === "processor" && (
@@ -154,6 +158,7 @@ export function Inspector({
         )}
       </div>
     </aside>
+    </FieldHintsProvider>
   );
 }
 
