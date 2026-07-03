@@ -121,4 +121,37 @@ describe("inspector docking", () => {
     fireEvent.click(screen.getByTestId("inspector-dock-toggle")); // detach again
     expect(frame().style.left).toBe(firstDetachedLeft);
   });
+
+  it("minimizing from docked shows the corner bar; restore returns to docked", () => {
+    renderEditorWithSelectedTransition();
+    const frame = () => screen.getByTestId("inspector-frame");
+    expect(frame().style.position).toBe("relative");
+    fireEvent.click(screen.getByTestId("inspector-minimize"));
+    expect(frame().style.display).toBe("none");
+    expect(screen.getByTestId("inspector-min-bar")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("inspector-restore"));
+    expect(screen.queryByTestId("inspector-min-bar")).toBeNull();
+    expect(frame().style.position).toBe("relative"); // back to docked
+  });
+
+  it("minimizing from floating restores to floating", () => {
+    renderEditorWithSelectedTransition();
+    fireEvent.click(screen.getByTestId("inspector-dock-toggle")); // detach → floating
+    fireEvent.click(screen.getByTestId("inspector-minimize"));
+    expect(screen.getByTestId("inspector-frame").style.display).toBe("none");
+    fireEvent.click(screen.getByTestId("inspector-min-bar")); // click bar to restore
+    expect(screen.getByTestId("inspector-frame").style.position).toBe("fixed"); // back to floating
+  });
+
+  it("persists the minimized mode across reload", () => {
+    renderEditorWithSelectedTransition("cyoda-editor-layout");
+    fireEvent.click(screen.getByTestId("inspector-minimize"));
+    cleanup();
+    // Re-mount with the same key: the minimized state is restored from localStorage.
+    currentDoc = fixtureDoc();
+    render(<WorkflowEditor document={currentDoc} mode="editor" localStorageKey="cyoda-editor-layout" />);
+    fireEvent.click(screen.getByTestId("select-auto-transition"));
+    expect(screen.getByTestId("inspector-min-bar")).toBeTruthy();
+    expect(screen.getByTestId("inspector-frame").style.display).toBe("none");
+  });
 });

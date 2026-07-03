@@ -111,6 +111,9 @@ export const defaultMessages = {
     anchorLeftBottom: "Left bottom",
     detachPanel: "Detach panel",
     dockPanel: "Dock panel",
+    minimize: "Minimize",
+    restore: "Restore",
+    minimizedTitle: "Inspector",
   },
   confirmDelete: {
     title: "Delete state?",

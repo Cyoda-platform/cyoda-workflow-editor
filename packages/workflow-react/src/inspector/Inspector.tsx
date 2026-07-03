@@ -25,6 +25,7 @@ export interface InspectorProps {
   onRequestDeleteState: (workflow: string, stateCode: string) => void;
   docked?: boolean;
   onToggleDock?: () => void;
+  onMinimize?: () => void;
 }
 
 function issueKeyForSelection(selection: Selection): string | null {
@@ -54,6 +55,7 @@ export function Inspector({
   onRequestDeleteState,
   docked,
   onToggleDock,
+  onMinimize,
 }: InspectorProps) {
   const messages = useMessages();
   const { developerMode } = useEditorConfig();
@@ -122,6 +124,32 @@ export function Inspector({
             }}
           >
             {docked ? "⤢" : "⤡"}
+          </button>
+        )}
+        {onMinimize && (
+          <button
+            type="button"
+            aria-label={messages.inspector.minimize}
+            title={messages.inspector.minimize}
+            data-testid="inspector-minimize"
+            onClick={onMinimize}
+            style={{
+              width: 24,
+              height: 24,
+              border: `1px solid ${colors.border}`,
+              borderRadius: radii.sm,
+              background: "white",
+              color: colors.textSecondary,
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "flex-end",
+              justifyContent: "center",
+              padding: "0 0 5px",
+              fontSize: 18,
+              lineHeight: "10px",
+            }}
+          >
+            –
           </button>
         )}
         {onClose && (

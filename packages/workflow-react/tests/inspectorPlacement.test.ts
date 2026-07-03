@@ -42,3 +42,13 @@ test("loadPlacement rejects a shape with a missing/non-numeric rect", () => {
   );
   expect(loadPlacement("k3")).toBeNull();
 });
+
+test("round-trips a minimized placement including restoreMode", () => {
+  const p = {
+    mode: "minimized" as const,
+    rect: { left: 10, top: 20, width: 400, height: 300 },
+    restoreMode: "floating" as const,
+  };
+  savePlacement("mkey", p);
+  expect(loadPlacement("mkey")).toEqual(p);
+});

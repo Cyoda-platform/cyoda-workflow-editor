@@ -146,15 +146,6 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return target.closest('[role="textbox"], .monaco-editor') !== null;
 }
 
-// Floating inspector fades to a translucent "peek" state until hovered/focused,
-// so it doesn't fully occlude the canvas behind it while parked out of the way.
-const INSPECTOR_TRANSLUCENCY_CSS = `
-.cyoda-inspector-floating { opacity: .18; transition: opacity .2s ease; }
-.cyoda-inspector-floating:hover, .cyoda-inspector-floating:focus-within { opacity: 1; }
-@media (hover: none) { .cyoda-inspector-floating { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .cyoda-inspector-floating { transition: none; } }
-`;
-
 function defaultNewWorkflow(existing: string[]): Workflow {
   let n = existing.length + 1;
   while (existing.includes(`workflow${n}`)) n++;
@@ -313,6 +304,27 @@ export function WorkflowEditor({
         return { mode: "floating", rect: clampRect(p.rect, viewport) };
       }
       return { ...p, mode: "docked" };
+    });
+  }, []);
+
+  // Collapse to the minimized bar, remembering whether to restore to docked or floating.
+  const minimizeInspector = useCallback(() => {
+    setPlacement((p) =>
+      p.mode === "minimized"
+        ? p
+        : { mode: "minimized", rect: p.rect, restoreMode: p.mode },
+    );
+  }, []);
+
+  // Bring a minimized panel back to the mode it was minimized from.
+  const restoreInspector = useCallback(() => {
+    setPlacement((p) => {
+      if (p.mode !== "minimized") return p;
+      const back = p.restoreMode ?? "docked";
+      if (back === "floating") {
+        return { mode: "floating", rect: clampRect(p.rect, { w: window.innerWidth, h: window.innerHeight }) };
+      }
+      return { mode: "docked", rect: p.rect };
     });
   }, []);
 
@@ -952,7 +964,6 @@ export function WorkflowEditor({
         onKeyDown={handleKeyDown}
         tabIndex={-1}
       >
-        <style>{INSPECTOR_TRANSLUCENCY_CSS}</style>
         {chrome?.tabs !== false && showTabs && (
           <WorkflowTabs
             workflows={workflows}
@@ -1092,6 +1103,8 @@ export function WorkflowEditor({
               dockedWidth={inspectorWidth}
               onRectChange={(rect) => setPlacement((p) => ({ ...p, rect }))}
               onDockedWidthChange={setInspectorWidth}
+              onRestore={restoreInspector}
+              onClose={() => handleSelectionChange(null)}
             >
               <Inspector
                 document={state.document}
@@ -1104,6 +1117,7 @@ export function WorkflowEditor({
                 onRequestDeleteState={requestDeleteState}
                 docked={placement.mode === "docked"}
                 onToggleDock={toggleDock}
+                onMinimize={minimizeInspector}
               />
             </InspectorFrame>
           )}

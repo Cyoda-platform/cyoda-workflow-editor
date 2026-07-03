@@ -1,6 +1,11 @@
-export type PlacementMode = "docked" | "floating";
+export type PlacementMode = "docked" | "floating" | "minimized";
 export interface FloatRect { left: number; top: number; width: number; height: number; }
-export interface Placement { mode: PlacementMode; rect: FloatRect; }
+export interface Placement {
+  mode: PlacementMode;
+  rect: FloatRect;
+  /** Where a minimized panel returns to on restore. Only meaningful when mode === "minimized". */
+  restoreMode?: "docked" | "floating";
+}
 
 export const MIN_FLOAT_W = 340;
 export const MIN_FLOAT_H = 260;
@@ -25,7 +30,7 @@ export function loadPlacement(base: string | null): Placement | null {
     const p = JSON.parse(raw) as Placement;
     if (
       p &&
-      (p.mode === "docked" || p.mode === "floating") &&
+      (p.mode === "docked" || p.mode === "floating" || p.mode === "minimized") &&
       p.rect &&
       typeof p.rect.left === "number" &&
       typeof p.rect.top === "number" &&

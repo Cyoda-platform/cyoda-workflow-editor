@@ -28,6 +28,48 @@ test("toggling mode does NOT remount children (Monaco-state preservation)", () =
   expect(onMount).toHaveBeenCalledTimes(1);          // same element identity → no remount
 });
 
+test("docked → floating → minimized → floating never remounts children (Monaco preserved)", () => {
+  const onMount = vi.fn();
+  const rect = { left: 40, top: 40, width: 400, height: 300 };
+  const props = { rect, dockedWidth: 384, onRectChange: vi.fn(), onDockedWidthChange: vi.fn(), onRestore: vi.fn() };
+  const { rerender } = render(<InspectorFrame mode="docked" {...props}><Child onMount={onMount} /></InspectorFrame>);
+  for (const mode of ["floating", "minimized", "floating", "docked"] as const) {
+    rerender(<InspectorFrame mode={mode} {...props}><Child onMount={onMount} /></InspectorFrame>);
+  }
+  expect(onMount).toHaveBeenCalledTimes(1);
+});
+
+test("minimized hides the panel (display:none) but keeps it mounted, and shows the bar", () => {
+  const rect = { left: 40, top: 40, width: 420, height: 320 };
+  render(
+    <InspectorFrame mode="minimized" rect={rect} dockedWidth={384} onRectChange={vi.fn()} onDockedWidthChange={vi.fn()} onRestore={vi.fn()}>
+      <div data-testid="child">c</div>
+    </InspectorFrame>,
+  );
+  const panel = screen.getByTestId("inspector-frame");
+  expect(panel.style.display).toBe("none");     // hidden…
+  expect(screen.getByTestId("child")).toBeTruthy(); // …but still mounted
+  expect(screen.getByTestId("inspector-min-bar")).toBeTruthy();
+  expect(screen.queryByTestId("inspector-resize-handle")).toBeNull();
+});
+
+test("clicking the minimized bar restores; the bar's restore and close buttons fire their callbacks", () => {
+  const onRestore = vi.fn();
+  const onClose = vi.fn();
+  const rect = { left: 40, top: 40, width: 420, height: 320 };
+  render(
+    <InspectorFrame mode="minimized" rect={rect} dockedWidth={384} onRectChange={vi.fn()} onDockedWidthChange={vi.fn()} onRestore={onRestore} onClose={onClose}>
+      <div data-testid="child">c</div>
+    </InspectorFrame>,
+  );
+  fireEvent.click(screen.getByTestId("inspector-min-bar"));
+  expect(onRestore).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByTestId("inspector-restore"));
+  expect(onRestore).toHaveBeenCalledTimes(2);   // bar click + explicit restore button
+  fireEvent.click(screen.getByTestId("inspector-min-close"));
+  expect(onClose).toHaveBeenCalledTimes(1);
+});
+
 test("floating mode positions the panel fixed at the rect", () => {
   const rect = { left: 40, top: 50, width: 420, height: 320 };
   render(
