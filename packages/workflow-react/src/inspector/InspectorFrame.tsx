@@ -13,7 +13,6 @@ export interface InspectorFrameProps {
 }
 
 export function InspectorFrame({ mode, rect, dockedWidth, onRectChange, onDockedWidthChange, children }: InspectorFrameProps) {
-  // Docked width drag (mirrors the old handleInspectorResizeStart).
   const startWidthDrag = (e: React.MouseEvent) => {
     e.preventDefault();
     const startX = e.clientX;

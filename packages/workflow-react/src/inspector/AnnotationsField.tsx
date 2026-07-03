@@ -78,6 +78,11 @@ function AnnotationsEditor({
   const result = parseAnnotationsJson(buffer);
   const dirty = result.annotations !== null && !sameJson(result.annotations, value);
   const applyEnabled = !disabled && result.annotations !== null && dirty;
+  // Revert must stay enabled while the buffer is invalid JSON — that's exactly
+  // when the user needs to bail out. Gate on a textual diff against the
+  // committed value's pretty form instead of `dirty` (which is false for
+  // unparseable buffers).
+  const canRevert = buffer !== pretty(value);
 
   const apply = () => {
     if (!applyEnabled || result.annotations === null) return;
@@ -121,7 +126,7 @@ function AnnotationsEditor({
           >
             {messages.inspector.annotationsApply}
           </button>
-          <button type="button" onClick={revert} disabled={!dirty} style={ghostBtn} data-testid="inspector-annotations-revert">
+          <button type="button" onClick={revert} disabled={!canRevert} style={ghostBtn} data-testid="inspector-annotations-revert">
             {messages.inspector.annotationsRevert}
           </button>
           <button type="button" onClick={onRemove} style={dangerBtn} data-testid="inspector-annotations-remove">

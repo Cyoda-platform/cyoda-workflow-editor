@@ -68,6 +68,11 @@ function CriterionEditor({ value, disabled, modelKey, onCommit, onRemove }: Crit
   const result = parseCriterionJson(buffer);
   const dirty = result.criterion !== null && !sameJson(result.criterion, value);
   const applyEnabled = !disabled && result.criterion !== null && dirty;
+  // Revert must stay enabled while the buffer is invalid JSON — that's exactly
+  // when the user needs to bail out. Gate on a textual diff against the
+  // committed value's pretty form instead of `dirty` (which is false for
+  // unparseable buffers).
+  const canRevert = buffer !== pretty(value);
 
   const apply = () => {
     if (!applyEnabled || result.criterion === null) return;
@@ -108,7 +113,7 @@ function CriterionEditor({ value, disabled, modelKey, onCommit, onRemove }: Crit
           {!disabled && (
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               <button type="button" onClick={apply} disabled={!applyEnabled} style={applyEnabled ? primaryBtnStyle : { ...primaryBtnStyle, opacity: 0.5, cursor: "not-allowed" }} data-testid="inspector-criterion-apply">{m.applyModal}</button>
-              <button type="button" onClick={revert} disabled={!dirty} style={ghostBtnStyle} data-testid="inspector-criterion-revert">{m.revert}</button>
+              <button type="button" onClick={revert} disabled={!canRevert} style={ghostBtnStyle} data-testid="inspector-criterion-revert">{m.revert}</button>
               <button type="button" onClick={() => setExpanded(false)} style={ghostBtnStyle} data-testid="inspector-criterion-collapse">{m.collapse}</button>
             </div>
           )}

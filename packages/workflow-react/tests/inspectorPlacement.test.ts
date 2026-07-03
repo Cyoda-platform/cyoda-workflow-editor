@@ -31,3 +31,14 @@ test("loadPlacement tolerates corrupt storage", () => {
   localStorage.setItem(placementStorageKey("k"), "{not json");
   expect(loadPlacement("k")).toBeNull();
 });
+
+test("loadPlacement rejects a shape with a missing/non-numeric rect", () => {
+  localStorage.setItem(placementStorageKey("k2"), JSON.stringify({ mode: "floating", rect: {} }));
+  expect(loadPlacement("k2")).toBeNull();
+
+  localStorage.setItem(
+    placementStorageKey("k3"),
+    JSON.stringify({ mode: "floating", rect: { left: "10", top: 20, width: 400, height: 300 } }),
+  );
+  expect(loadPlacement("k3")).toBeNull();
+});

@@ -68,6 +68,6 @@ test("inspector detaches, floats, and preserves Monaco state across dock/float",
 
   // The Monaco pane is still present inside the frame — not remounted away —
   // and still shows the criterion editor still expanded from before.
-  await expect(frame.locator(".monaco-editor")).toBeVisible();
+  await expect(frame.locator(".monaco-editor").first()).toBeVisible();
   await expect(page.getByTestId("criterion-json-editor")).toBeVisible();
 });

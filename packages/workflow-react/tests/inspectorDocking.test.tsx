@@ -1,8 +1,9 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { parseImportPayload, type WorkflowEditorDocument } from "@cyoda/workflow-core";
 import { WorkflowEditor } from "../src/index.js";
 import type { CanvasProps } from "../src/components/Canvas.js";
+import { savePlacement } from "../src/inspector/inspectorPlacement.js";
 
 let latestCanvasProps: CanvasProps | undefined;
 let currentDoc: WorkflowEditorDocument | undefined;
@@ -64,16 +65,21 @@ function transitionId(workflow: string, state: string, transitionName: string): 
   return ids[index]![0];
 }
 
-function renderEditorWithSelectedTransition(): void {
+function renderEditorWithSelectedTransition(localStorageKey: string | null = null): void {
   currentDoc = fixtureDoc();
-  render(<WorkflowEditor document={currentDoc} mode="editor" localStorageKey={null} />);
+  render(<WorkflowEditor document={currentDoc} mode="editor" localStorageKey={localStorageKey} />);
   fireEvent.click(screen.getByTestId("select-auto-transition"));
 }
+
+beforeEach(() => {
+  localStorage.clear();
+});
 
 afterEach(() => {
   latestCanvasProps = undefined;
   currentDoc = undefined;
   cleanup();
+  localStorage.clear();
 });
 
 describe("inspector docking", () => {
@@ -85,5 +91,34 @@ describe("inspector docking", () => {
     expect(frame().style.position).toBe("fixed");
     fireEvent.click(screen.getByTestId("inspector-dock-toggle"));
     expect(frame().style.position).toBe("relative");
+  });
+
+  it("clamps a placement restored from localStorage into the current viewport", () => {
+    // A rect saved on a much larger viewport (e.g. an external monitor) must
+    // not be restored off-screen — there is no in-UI way to recover it.
+    savePlacement("cyoda-editor-layout", {
+      mode: "floating",
+      rect: { left: 99999, top: 99999, width: 460, height: 560 },
+    });
+    renderEditorWithSelectedTransition("cyoda-editor-layout");
+    const frame = screen.getByTestId("inspector-frame");
+    const left = parseInt(frame.style.left, 10);
+    const top = parseInt(frame.style.top, 10);
+    const width = parseInt(frame.style.width, 10);
+    const height = parseInt(frame.style.height, 10);
+    expect(left).toBeGreaterThanOrEqual(0);
+    expect(top).toBeGreaterThanOrEqual(0);
+    expect(left + width).toBeLessThanOrEqual(window.innerWidth);
+    expect(top + height).toBeLessThanOrEqual(window.innerHeight);
+  });
+
+  it("re-detaching restores the last floating position instead of reseeding", () => {
+    renderEditorWithSelectedTransition();
+    const frame = () => screen.getByTestId("inspector-frame");
+    fireEvent.click(screen.getByTestId("inspector-dock-toggle")); // detach
+    const firstDetachedLeft = frame().style.left;
+    fireEvent.click(screen.getByTestId("inspector-dock-toggle")); // dock
+    fireEvent.click(screen.getByTestId("inspector-dock-toggle")); // detach again
+    expect(frame().style.left).toBe(firstDetachedLeft);
   });
 });

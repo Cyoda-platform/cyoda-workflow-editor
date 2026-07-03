@@ -23,7 +23,17 @@ export function loadPlacement(base: string | null): Placement | null {
     const raw = localStorage.getItem(placementStorageKey(base));
     if (!raw) return null;
     const p = JSON.parse(raw) as Placement;
-    if (p && (p.mode === "docked" || p.mode === "floating") && p.rect) return p;
+    if (
+      p &&
+      (p.mode === "docked" || p.mode === "floating") &&
+      p.rect &&
+      typeof p.rect.left === "number" &&
+      typeof p.rect.top === "number" &&
+      typeof p.rect.width === "number" &&
+      typeof p.rect.height === "number"
+    ) {
+      return p;
+    }
     return null;
   } catch {
     return null;

@@ -230,13 +230,16 @@ export function WorkflowEditor({
   const [jsonStatus, setJsonStatus] = useState<JsonEditStatus>({ status: "idle" });
   const [openIssueSeverity, setOpenIssueSeverity] = useState<IssueSeverity | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(false);
-  const [placement, setPlacement] = useState<Placement>(
-    () =>
-      loadPlacement(localStorageKey) ?? {
-        mode: "docked",
-        rect: { left: 120, top: 96, width: 460, height: 560 },
-      },
-  );
+  const [placement, setPlacement] = useState<Placement>(() => {
+    const loaded = loadPlacement(localStorageKey);
+    if (loaded) {
+      return {
+        ...loaded,
+        rect: clampRect(loaded.rect, { w: window.innerWidth, h: window.innerHeight }),
+      };
+    }
+    return { mode: "docked", rect: { left: 120, top: 96, width: 460, height: 560 } };
+  });
 
   interface PendingVersionSwitch {
     targetVersion: string;
@@ -301,21 +304,17 @@ export function WorkflowEditor({
 
   const toggleDock = useCallback(() => {
     setPlacement((p) => {
+      const viewport = { w: window.innerWidth, h: window.innerHeight };
       if (p.mode === "docked") {
-        const seeded = clampRect(
-          {
-            left: Math.max(24, window.innerWidth - inspectorWidth - 40),
-            top: 84,
-            width: Math.max(inspectorWidth, 460),
-            height: Math.min(window.innerHeight - 120, 640),
-          },
-          { w: window.innerWidth, h: window.innerHeight },
-        );
-        return { mode: "floating", rect: seeded };
+        // Re-detaching restores the panel to where it last was within this
+        // session (persisted rect), rather than re-seeding a fresh top-right
+        // position — the seed in the initializer only applies on first-ever
+        // detach, when there is no prior floating rect to return to.
+        return { mode: "floating", rect: clampRect(p.rect, viewport) };
       }
       return { ...p, mode: "docked" };
     });
-  }, [inspectorWidth]);
+  }, []);
 
   // No longer using the Web Fullscreen API — it is unreliable in Tauri's WKWebView.
   // Fullscreen is simulated via CSS (position:fixed / inset:0) instead.

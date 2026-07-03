@@ -46,6 +46,18 @@ test("expanded: invalid JSON disables Apply and shows an error", () => {
   expect(screen.getByTestId("criterion-error")).toBeTruthy();
 });
 
+test("Revert is enabled while the buffer is invalid JSON and restores the value", () => {
+  render(wrap(<CriterionField value={simple} disabled={false} modelKey="t1" onCommit={vi.fn()} onRemove={vi.fn()} />));
+  fireEvent.click(screen.getByTestId("inspector-criterion-edit"));
+  const ta = screen.getByTestId("criterion-json-editor") as HTMLTextAreaElement;
+  fireEvent.change(ta, { target: { value: "{ not json" } });
+  const revert = () => screen.getByTestId("inspector-criterion-revert") as HTMLButtonElement;
+  expect(revert().disabled).toBe(false); // invalid JSON must not block Revert
+  fireEvent.click(revert());
+  expect(ta.value).toBe(JSON.stringify(simple, null, 2));
+  expect(revert().disabled).toBe(true);
+});
+
 test("Remove dispatches onRemove", () => {
   const onRemove = vi.fn();
   render(wrap(<CriterionField value={simple} disabled={false} modelKey="t1" onCommit={vi.fn()} onRemove={onRemove} />));
