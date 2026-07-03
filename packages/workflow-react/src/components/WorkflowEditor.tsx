@@ -149,7 +149,7 @@ function isTypingTarget(target: EventTarget | null): boolean {
 // Floating inspector fades to a translucent "peek" state until hovered/focused,
 // so it doesn't fully occlude the canvas behind it while parked out of the way.
 const INSPECTOR_TRANSLUCENCY_CSS = `
-.cyoda-inspector-floating { opacity: .55; transition: opacity .18s ease; }
+.cyoda-inspector-floating { opacity: .18; transition: opacity .2s ease; }
 .cyoda-inspector-floating:hover, .cyoda-inspector-floating:focus-within { opacity: 1; }
 @media (hover: none) { .cyoda-inspector-floating { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .cyoda-inspector-floating { transition: none; } }
