@@ -174,6 +174,8 @@ export const defaultMessages = {
       "Automated transitions without criteria should usually be last in the transition order.",
     cancel: "Cancel",
     applyModal: "Apply",
+    revert: "Revert",
+    collapse: "Collapse",
   },
 };
 
