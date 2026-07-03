@@ -52,3 +52,59 @@ test("docked mode is relative and sized by dockedWidth; the col-resize handle is
   expect(panel.style.width).toBe("384px");
   expect(screen.getByTestId("inspector-resize-handle")).toBeTruthy();
 });
+
+test("mousedown on the drag handle moves the floating frame", () => {
+  const onRectChange = vi.fn();
+  const rect = { left: 40, top: 40, width: 400, height: 300 };
+  render(
+    <InspectorFrame mode="floating" rect={rect} dockedWidth={384} onRectChange={onRectChange} onDockedWidthChange={vi.fn()}>
+      <div data-inspector-drag-handle>
+        <span data-testid="hdr">h</span>
+      </div>
+      <textarea data-testid="body" />
+    </InspectorFrame>,
+  );
+  fireEvent.mouseDown(screen.getByTestId("hdr"), { clientX: 50, clientY: 50 });
+  fireEvent.mouseMove(document, { clientX: 70, clientY: 90 });
+  expect(onRectChange).toHaveBeenCalled();
+  fireEvent.mouseUp(document);
+});
+
+test("mousedown in the panel body does NOT move the floating frame", () => {
+  const onRectChange = vi.fn();
+  const rect = { left: 40, top: 40, width: 400, height: 300 };
+  render(
+    <InspectorFrame mode="floating" rect={rect} dockedWidth={384} onRectChange={onRectChange} onDockedWidthChange={vi.fn()}>
+      <div data-inspector-drag-handle>
+        <span data-testid="hdr">h</span>
+      </div>
+      <textarea data-testid="body" />
+    </InspectorFrame>,
+  );
+  fireEvent.mouseDown(screen.getByTestId("body"), { clientX: 50, clientY: 50 });
+  fireEvent.mouseMove(document, { clientX: 70, clientY: 90 });
+  expect(onRectChange).not.toHaveBeenCalled();
+  fireEvent.mouseUp(document);
+});
+
+test("dragging the resize grip resizes without moving the frame", () => {
+  const onRectChange = vi.fn();
+  const rect = { left: 40, top: 40, width: 400, height: 300 };
+  render(
+    <InspectorFrame mode="floating" rect={rect} dockedWidth={384} onRectChange={onRectChange} onDockedWidthChange={vi.fn()}>
+      <div data-inspector-drag-handle>h</div>
+    </InspectorFrame>,
+  );
+  fireEvent.mouseDown(screen.getByTestId("inspector-resize-grip"), { clientX: 100, clientY: 100 });
+  fireEvent.mouseMove(document, { clientX: 130, clientY: 140 });
+  expect(onRectChange).toHaveBeenCalled();
+  for (const call of onRectChange.mock.calls) {
+    const r = call[0];
+    expect(r.left).toBe(40);
+    expect(r.top).toBe(40);
+  }
+  const last = onRectChange.mock.calls[onRectChange.mock.calls.length - 1][0];
+  expect(last.width).toBe(430);
+  expect(last.height).toBe(340);
+  fireEvent.mouseUp(document);
+});

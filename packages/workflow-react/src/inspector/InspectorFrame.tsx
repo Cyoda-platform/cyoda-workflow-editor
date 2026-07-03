@@ -1,4 +1,3 @@
-import { useRef } from "react";
 import { colors } from "../style/tokens.js";
 import { clampRect, MIN_FLOAT_W, MIN_FLOAT_H, type FloatRect, type PlacementMode } from "./inspectorPlacement.js";
 
@@ -14,8 +13,6 @@ export interface InspectorFrameProps {
 }
 
 export function InspectorFrame({ mode, rect, dockedWidth, onRectChange, onDockedWidthChange, children }: InspectorFrameProps) {
-  const grabbedRef = useRef(false);
-
   // Docked width drag (mirrors the old handleInspectorResizeStart).
   const startWidthDrag = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -30,13 +27,14 @@ export function InspectorFrame({ mode, rect, dockedWidth, onRectChange, onDocked
   const viewport = () => ({ w: window.innerWidth, h: window.innerHeight });
 
   const startMove = (e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest("button")) return;   // don't drag from header buttons
+    const target = e.target as HTMLElement;
+    if (target.closest("button")) return;                        // don't drag from header buttons
+    if (!target.closest("[data-inspector-drag-handle]")) return;  // only the header strip drags
     e.preventDefault();
-    grabbedRef.current = true;
     const dx = e.clientX - rect.left;
     const dy = e.clientY - rect.top;
     const onMove = (ev: MouseEvent) => onRectChange(clampRect({ ...rect, left: ev.clientX - dx, top: ev.clientY - dy }, viewport()));
-    const onUp = () => { grabbedRef.current = false; document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
+    const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
   };

@@ -87,6 +87,7 @@ export function Inspector({
       data-testid="inspector"
     >
       <header
+        data-inspector-drag-handle
         style={{
           padding: "10px 12px",
           borderBottom: `1px solid ${colors.borderSubtle}`,
