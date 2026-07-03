@@ -1,4 +1,37 @@
 import { expect, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
+
+/**
+ * Replaces the value of the LAST JSON property in a pretty-printed
+ * (`JSON.stringify(criterion, null, 2)`) criterion buffer — e.g. turns
+ * `"value": "mismatch"` into `"value": "mismatch-e2e"` — without touching
+ * anything else in the document.
+ *
+ * Avoids Select-All + Delete: `annotations-lifecycle.spec.ts` documents that
+ * ControlOrMeta+A / Delete does not reliably clear this Monaco build's
+ * EditContext-based editable surface under Playwright's CDP-driven input.
+ * Pure keyboard navigation (End / ArrowUp / ArrowLeft / Shift+ArrowLeft) +
+ * `insertText` does work — it is the same family of primitives already
+ * proven by `criterion-delete-key.spec.ts`'s End+Backspace and by
+ * `annotations-lifecycle.spec.ts`'s End+ArrowLeft+insertText.
+ *
+ * `oldValue`'s length drives how many characters get selected backward from
+ * just before the closing quote of the last property's value, so this only
+ * works when `oldValue` is the exact current value of the last property.
+ */
+async function replaceLastPropertyValue(page: Page, oldValue: string, newValue: string) {
+  const editor = page.getByTestId("criterion-json-editor");
+  const viewLines = editor.locator(".view-lines");
+  await viewLines.click();
+  await page.keyboard.press("ControlOrMeta+End"); // end of the document (closing "}")
+  await page.keyboard.press("ArrowUp"); // up to the last property's line
+  await page.keyboard.press("End"); // true end of that line, after the closing quote
+  await page.keyboard.press("ArrowLeft"); // before the closing quote, after the value text
+  for (let i = 0; i < oldValue.length; i += 1) {
+    await page.keyboard.press("Shift+ArrowLeft");
+  }
+  await page.keyboard.insertText(newValue);
+}
 
 test("criteria editor page mounts and surfaces every coverage row", async ({ page }) => {
   const errors: string[] = [];
@@ -39,7 +72,7 @@ test("criteria editor page mounts and surfaces every coverage row", async ({ pag
   expect(errors, errors.join("\n")).toEqual([]);
 });
 
-test("criteria editor shows compact inspector card and opens modal editor", async ({ page }) => {
+test("criteria editor shows compact inspector card and edits criterion inline", async ({ page }) => {
   await page.goto("/criteria");
   await expect(page.getByTestId("criteria-page")).toBeVisible();
 
@@ -49,23 +82,41 @@ test("criteria editor shows compact inspector card and opens modal editor", asyn
     .first()
     .dispatchEvent("click");
 
+  // Compact, collapsed state: summary card + Edit affordance, no JSON pane yet.
   await expect(page.getByTestId("criterion-summary-card")).toBeVisible();
   await expect(page.getByTestId("inspector-criterion-edit")).toBeVisible();
-  await expect(page.getByTestId("inspector-transition-criteria-section")).not.toContainText(
-    "Edit as JSON",
-  );
   await expect(page.getByTestId("criterion-type-select")).toHaveCount(0);
+  await expect(page.getByTestId("criterion-json-editor")).toHaveCount(0);
+  await expect(page.getByTestId("criterion-compact-json")).toContainText("mismatch");
 
   await page.getByTestId("inspector-criterion-edit").click();
 
-  await expect(page.getByTestId("criterion-editor-modal")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Edit criterion" })).toBeVisible();
+  // Expands INLINE — no modal ever mounts.
+  await expect(page.getByTestId("criterion-editor-modal")).toHaveCount(0);
   await expect(page.getByTestId("criterion-json-editor")).toBeVisible();
-  await expect(page.getByTestId("criterion-modal-apply")).toBeVisible();
+  await expect(page.getByTestId("inspector-criterion-apply")).toBeVisible();
+  await expect(page.getByTestId("inspector-criterion-revert")).toBeVisible();
+  await expect(page.getByTestId("inspector-criterion-collapse")).toBeVisible();
 
-  await page.getByTestId("criterion-modal-cancel").click();
+  // Type valid criterion JSON into the Monaco pane (change the IEQUALS value).
+  await replaceLastPropertyValue(page, "mismatch", "mismatch-e2e");
+
+  const applyButton = page.getByTestId("inspector-criterion-apply");
+  await expect(applyButton).toBeEnabled();
+  await applyButton.click();
+
+  // Apply commits and collapses the field back to the compact preview, which
+  // now reflects the change — proving it actually took.
+  await expect(page.getByTestId("criterion-json-editor")).toHaveCount(0);
   await expect(page.getByTestId("criterion-editor-modal")).toHaveCount(0);
   await expect(page.getByTestId("criterion-summary-card")).toBeVisible();
+  await expect(page.getByTestId("criterion-compact-json")).toContainText("mismatch-e2e");
+
+  // ... and persisted into the exported workflow JSON panel too. (/criteria
+  // renders two .code-block panels — workflow JSON, then the entity sample —
+  // so scope to the first, unlike /editor's single JsonBlock.)
+  const jsonBlock = page.locator(".code-block").first();
+  await expect(jsonBlock).toContainText("mismatch-e2e");
 });
 
 // Regression guard for the React Flow 11 / React 19 idle render loop: the Canvas

@@ -53,6 +53,17 @@ test("Revert restores the buffer to value and re-disables Apply", () => {
   expect((screen.getByTestId("inspector-annotations-apply") as HTMLButtonElement).disabled).toBe(true);
 });
 
+test("Revert is enabled while the buffer is invalid JSON and restores the value", () => {
+  render(<AnnotationsField value={{ a: 1 }} disabled={false} modelKey="k" onCommit={vi.fn()} onRemove={vi.fn()} />);
+  const ta = screen.getByTestId("annotations-json-editor") as HTMLTextAreaElement;
+  fireEvent.change(ta, { target: { value: "{ not json" } });
+  const revert = () => screen.getByTestId("inspector-annotations-revert") as HTMLButtonElement;
+  expect(revert().disabled).toBe(false); // invalid JSON must not block Revert
+  fireEvent.click(revert());
+  expect(ta.value).toBe(JSON.stringify({ a: 1 }, null, 2));
+  expect(revert().disabled).toBe(true);
+});
+
 test("three-way sync: clean buffer re-seeds on external value change; echo is a no-op; dirty buffer is kept", () => {
   const { rerender } = render(
     <AnnotationsField value={{ a: 1 }} disabled={false} modelKey="k" onCommit={vi.fn()} onRemove={vi.fn()} />,

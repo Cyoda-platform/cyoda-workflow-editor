@@ -85,6 +85,7 @@ export const defaultMessages = {
     annotationsRevert: "Revert",
     annotationsRemove: "Remove",
     annotationsDocChanged: "Document changed underneath — Revert to reload.",
+    format: "Format",
     executionMode: "Execution mode",
     addProcessor: "Add processor",
     removeProcessor: "Remove",
@@ -108,6 +109,11 @@ export const defaultMessages = {
     anchorLeftTop: "Left top",
     anchorLeft: "Left",
     anchorLeftBottom: "Left bottom",
+    detachPanel: "Detach panel",
+    dockPanel: "Dock panel",
+    minimize: "Minimize",
+    restore: "Restore",
+    minimizedTitle: "Inspector",
   },
   confirmDelete: {
     title: "Delete state?",
@@ -173,6 +179,8 @@ export const defaultMessages = {
       "Automated transitions without criteria should usually be last in the transition order.",
     cancel: "Cancel",
     applyModal: "Apply",
+    revert: "Revert",
+    collapse: "Collapse",
   },
 };
 

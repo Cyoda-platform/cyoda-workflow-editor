@@ -30,6 +30,13 @@ import type { EditorMode, Selection } from "../state/types.js";
 import { Canvas } from "./Canvas.js";
 import { resolveConnection, type PendingConnect } from "./resolveConnection.js";
 import { Inspector } from "../inspector/Inspector.js";
+import { InspectorFrame } from "../inspector/InspectorFrame.js";
+import {
+  clampRect,
+  loadPlacement,
+  savePlacement,
+  type Placement,
+} from "../inspector/inspectorPlacement.js";
 import { CriterionMonacoProvider } from "../inspector/CriterionMonacoContext.js";
 import { Toolbar, type IssueSeverity } from "../toolbar/Toolbar.js";
 import { IssuesDrawer } from "../toolbar/IssuesDrawer.js";
@@ -214,6 +221,16 @@ export function WorkflowEditor({
   const [jsonStatus, setJsonStatus] = useState<JsonEditStatus>({ status: "idle" });
   const [openIssueSeverity, setOpenIssueSeverity] = useState<IssueSeverity | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [placement, setPlacement] = useState<Placement>(() => {
+    const loaded = loadPlacement(localStorageKey);
+    if (loaded) {
+      return {
+        ...loaded,
+        rect: clampRect(loaded.rect, { w: window.innerWidth, h: window.innerHeight }),
+      };
+    }
+    return { mode: "docked", rect: { left: 120, top: 96, width: 460, height: 560 } };
+  });
 
   interface PendingVersionSwitch {
     targetVersion: string;
@@ -271,24 +288,48 @@ export function WorkflowEditor({
     if (ui) onLayoutMetadataChange(ui);
   }, [state.document.meta.workflowUi, state.activeWorkflow, onLayoutMetadataChange]);
 
+  // Persist inspector docked/floating placement to localStorage.
+  useEffect(() => {
+    savePlacement(localStorageKey, placement);
+  }, [placement, localStorageKey]);
+
+  const toggleDock = useCallback(() => {
+    setPlacement((p) => {
+      const viewport = { w: window.innerWidth, h: window.innerHeight };
+      if (p.mode === "docked") {
+        // Re-detaching restores the panel to where it last was within this
+        // session (persisted rect), rather than re-seeding a fresh top-right
+        // position — the seed in the initializer only applies on first-ever
+        // detach, when there is no prior floating rect to return to.
+        return { mode: "floating", rect: clampRect(p.rect, viewport) };
+      }
+      return { ...p, mode: "docked" };
+    });
+  }, []);
+
+  // Collapse to the minimized bar, remembering whether to restore to docked or floating.
+  const minimizeInspector = useCallback(() => {
+    setPlacement((p) =>
+      p.mode === "minimized"
+        ? p
+        : { mode: "minimized", rect: p.rect, restoreMode: p.mode },
+    );
+  }, []);
+
+  // Bring a minimized panel back to the mode it was minimized from.
+  const restoreInspector = useCallback(() => {
+    setPlacement((p) => {
+      if (p.mode !== "minimized") return p;
+      const back = p.restoreMode ?? "docked";
+      if (back === "floating") {
+        return { mode: "floating", rect: clampRect(p.rect, { w: window.innerWidth, h: window.innerHeight }) };
+      }
+      return { mode: "docked", rect: p.rect };
+    });
+  }, []);
+
   // No longer using the Web Fullscreen API — it is unreliable in Tauri's WKWebView.
   // Fullscreen is simulated via CSS (position:fixed / inset:0) instead.
-
-  const handleInspectorResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    const startX = e.clientX;
-    const startWidth = inspectorWidth;
-    const onMove = (ev: MouseEvent) => {
-      const delta = startX - ev.clientX;
-      setInspectorWidth(Math.max(360, startWidth + delta));
-    };
-    const onUp = () => {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-    };
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  }, [inspectorWidth]);
 
   const handleToggleFullscreen = useCallback(() => {
     setIsFullscreen((v) => !v);
@@ -307,13 +348,6 @@ export function WorkflowEditor({
           kind: "transition",
           transitionUuid: patch.host.transitionUuid,
         };
-        pendingSelectionRestoreRef.current = restoreSelection;
-        window.setTimeout(() => {
-          if (sameSelection(pendingSelectionRestoreRef.current, restoreSelection)) {
-            actions.setSelection(restoreSelection);
-            pendingSelectionRestoreRef.current = null;
-          }
-        }, 50);
         actions.dispatchTransaction({
           summary: patch.criterion ? "Set criterion" : "Clear criterion",
           patches: [patch],
@@ -1063,21 +1097,15 @@ export function WorkflowEditor({
             )}
           </div>
           {inspectorVisible && (
-            <>
-              <div
-                onMouseDown={handleInspectorResizeStart}
-                style={{
-                  width: 3,
-                  flexShrink: 0,
-                  cursor: "col-resize",
-                  background: "transparent",
-                  borderLeft: "1px solid #E2E8F0",
-                  transition: "background 0.15s",
-                  zIndex: 10,
-                }}
-                onMouseEnter={e => (e.currentTarget.style.background = "#CBD5E1")}
-                onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
-              />
+            <InspectorFrame
+              mode={placement.mode}
+              rect={placement.rect}
+              dockedWidth={inspectorWidth}
+              onRectChange={(rect) => setPlacement((p) => ({ ...p, rect }))}
+              onDockedWidthChange={setInspectorWidth}
+              onRestore={restoreInspector}
+              onClose={() => handleSelectionChange(null)}
+            >
               <Inspector
                 document={state.document}
                 selection={state.selection}
@@ -1087,9 +1115,11 @@ export function WorkflowEditor({
                 onSelectionChange={handleSelectionChange}
                 onClose={() => handleSelectionChange(null)}
                 onRequestDeleteState={requestDeleteState}
-                width={inspectorWidth}
+                docked={placement.mode === "docked"}
+                onToggleDock={toggleDock}
+                onMinimize={minimizeInspector}
               />
-            </>
+            </InspectorFrame>
           )}
         </div>
         {pendingAddState !== null && state.activeWorkflow && (
@@ -1325,30 +1355,6 @@ function normalizeAnchorPair(anchors: EdgeAnchorPair): EdgeAnchorPair | null {
 
 function sameAnchors(a: EdgeAnchorPair | undefined, b: EdgeAnchorPair | undefined): boolean {
   return a?.source === b?.source && a?.target === b?.target;
-}
-
-function sameSelection(a: Selection, b: Selection): boolean {
-  if (a === b) return true;
-  if (!a || !b || a.kind !== b.kind) return false;
-  switch (a.kind) {
-    case "workflow":
-      return b.kind === "workflow" && a.workflow === b.workflow;
-    case "state":
-      return b.kind === "state" &&
-        a.workflow === b.workflow &&
-        a.stateCode === b.stateCode &&
-        a.nodeId === b.nodeId;
-    case "transition":
-      return b.kind === "transition" && a.transitionUuid === b.transitionUuid;
-    case "processor":
-      return b.kind === "processor" && a.processorUuid === b.processorUuid;
-    case "criterion":
-      return b.kind === "criterion" &&
-        a.hostKind === b.hostKind &&
-        a.hostId === b.hostId &&
-        a.path.length === b.path.length &&
-        a.path.every((part, index) => part === b.path[index]);
-  }
 }
 
 function workflowForSelection(
