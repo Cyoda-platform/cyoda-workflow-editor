@@ -85,6 +85,7 @@ export const defaultMessages = {
     annotationsRevert: "Revert",
     annotationsRemove: "Remove",
     annotationsDocChanged: "Document changed underneath — Revert to reload.",
+    format: "Format",
     executionMode: "Execution mode",
     addProcessor: "Add processor",
     removeProcessor: "Remove",
