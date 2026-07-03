@@ -307,13 +307,6 @@ export function WorkflowEditor({
           kind: "transition",
           transitionUuid: patch.host.transitionUuid,
         };
-        pendingSelectionRestoreRef.current = restoreSelection;
-        window.setTimeout(() => {
-          if (sameSelection(pendingSelectionRestoreRef.current, restoreSelection)) {
-            actions.setSelection(restoreSelection);
-            pendingSelectionRestoreRef.current = null;
-          }
-        }, 50);
         actions.dispatchTransaction({
           summary: patch.criterion ? "Set criterion" : "Clear criterion",
           patches: [patch],
@@ -1325,30 +1318,6 @@ function normalizeAnchorPair(anchors: EdgeAnchorPair): EdgeAnchorPair | null {
 
 function sameAnchors(a: EdgeAnchorPair | undefined, b: EdgeAnchorPair | undefined): boolean {
   return a?.source === b?.source && a?.target === b?.target;
-}
-
-function sameSelection(a: Selection, b: Selection): boolean {
-  if (a === b) return true;
-  if (!a || !b || a.kind !== b.kind) return false;
-  switch (a.kind) {
-    case "workflow":
-      return b.kind === "workflow" && a.workflow === b.workflow;
-    case "state":
-      return b.kind === "state" &&
-        a.workflow === b.workflow &&
-        a.stateCode === b.stateCode &&
-        a.nodeId === b.nodeId;
-    case "transition":
-      return b.kind === "transition" && a.transitionUuid === b.transitionUuid;
-    case "processor":
-      return b.kind === "processor" && a.processorUuid === b.processorUuid;
-    case "criterion":
-      return b.kind === "criterion" &&
-        a.hostKind === b.hostKind &&
-        a.hostId === b.hostId &&
-        a.path.length === b.path.length &&
-        a.path.every((part, index) => part === b.path[index]);
-  }
 }
 
 function workflowForSelection(
