@@ -23,7 +23,9 @@ export interface InspectorProps {
   onSelectionChange: (sel: Selection) => void;
   onClose?: () => void;
   onRequestDeleteState: (workflow: string, stateCode: string) => void;
-  width?: number;
+  docked?: boolean;
+  onToggleDock?: () => void;
+  onMinimize?: () => void;
 }
 
 function issueKeyForSelection(selection: Selection): string | null {
@@ -51,7 +53,9 @@ export function Inspector({
   onSelectionChange,
   onClose,
   onRequestDeleteState,
-  width = 384,
+  docked,
+  onToggleDock,
+  onMinimize,
 }: InspectorProps) {
   const messages = useMessages();
   const { developerMode } = useEditorConfig();
@@ -75,14 +79,15 @@ export function Inspector({
         flexDirection: "column",
         background: colors.surfaceMuted,
         borderLeft: `1px solid ${colors.borderSubtle}`,
-        flex: `0 0 ${width}px`,
-        width,
-        minWidth: 360,
+        flex: "1 1 auto",
+        width: "100%",
+        minWidth: 0,
         fontFamily: fonts.sans,
       }}
       data-testid="inspector"
     >
       <header
+        data-inspector-drag-handle
         style={{
           padding: "10px 12px",
           borderBottom: `1px solid ${colors.borderSubtle}`,
@@ -96,6 +101,57 @@ export function Inspector({
         <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {breadcrumb}
         </span>
+        {onToggleDock && (
+          <button
+            type="button"
+            aria-label={docked ? messages.inspector.detachPanel : messages.inspector.dockPanel}
+            title={docked ? messages.inspector.detachPanel : messages.inspector.dockPanel}
+            data-testid="inspector-dock-toggle"
+            onClick={onToggleDock}
+            style={{
+              width: 24,
+              height: 24,
+              border: `1px solid ${colors.border}`,
+              borderRadius: radii.sm,
+              background: "white",
+              color: colors.textSecondary,
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 0,
+              fontSize: 13,
+            }}
+          >
+            {docked ? "⤢" : "⤡"}
+          </button>
+        )}
+        {onMinimize && (
+          <button
+            type="button"
+            aria-label={messages.inspector.minimize}
+            title={messages.inspector.minimize}
+            data-testid="inspector-minimize"
+            onClick={onMinimize}
+            style={{
+              width: 24,
+              height: 24,
+              border: `1px solid ${colors.border}`,
+              borderRadius: radii.sm,
+              background: "white",
+              color: colors.textSecondary,
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "flex-end",
+              justifyContent: "center",
+              padding: "0 0 5px",
+              fontSize: 18,
+              lineHeight: "10px",
+            }}
+          >
+            –
+          </button>
+        )}
         {onClose && (
           <button
             type="button"
