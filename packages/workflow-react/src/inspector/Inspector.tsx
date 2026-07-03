@@ -23,7 +23,6 @@ export interface InspectorProps {
   onSelectionChange: (sel: Selection) => void;
   onClose?: () => void;
   onRequestDeleteState: (workflow: string, stateCode: string) => void;
-  width?: number;
   docked?: boolean;
   onToggleDock?: () => void;
 }
@@ -53,7 +52,6 @@ export function Inspector({
   onSelectionChange,
   onClose,
   onRequestDeleteState,
-  width: _width = 384,
   docked,
   onToggleDock,
 }: InspectorProps) {

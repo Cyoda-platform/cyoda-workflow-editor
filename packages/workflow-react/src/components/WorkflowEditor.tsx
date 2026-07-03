@@ -30,6 +30,13 @@ import type { EditorMode, Selection } from "../state/types.js";
 import { Canvas } from "./Canvas.js";
 import { resolveConnection, type PendingConnect } from "./resolveConnection.js";
 import { Inspector } from "../inspector/Inspector.js";
+import { InspectorFrame } from "../inspector/InspectorFrame.js";
+import {
+  clampRect,
+  loadPlacement,
+  savePlacement,
+  type Placement,
+} from "../inspector/inspectorPlacement.js";
 import { CriterionMonacoProvider } from "../inspector/CriterionMonacoContext.js";
 import { Toolbar, type IssueSeverity } from "../toolbar/Toolbar.js";
 import { IssuesDrawer } from "../toolbar/IssuesDrawer.js";
@@ -139,6 +146,15 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return target.closest('[role="textbox"], .monaco-editor') !== null;
 }
 
+// Floating inspector fades to a translucent "peek" state until hovered/focused,
+// so it doesn't fully occlude the canvas behind it while parked out of the way.
+const INSPECTOR_TRANSLUCENCY_CSS = `
+.cyoda-inspector-floating { opacity: .55; transition: opacity .18s ease; }
+.cyoda-inspector-floating:hover, .cyoda-inspector-floating:focus-within { opacity: 1; }
+@media (hover: none) { .cyoda-inspector-floating { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .cyoda-inspector-floating { transition: none; } }
+`;
+
 function defaultNewWorkflow(existing: string[]): Workflow {
   let n = existing.length + 1;
   while (existing.includes(`workflow${n}`)) n++;
@@ -214,6 +230,13 @@ export function WorkflowEditor({
   const [jsonStatus, setJsonStatus] = useState<JsonEditStatus>({ status: "idle" });
   const [openIssueSeverity, setOpenIssueSeverity] = useState<IssueSeverity | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [placement, setPlacement] = useState<Placement>(
+    () =>
+      loadPlacement(localStorageKey) ?? {
+        mode: "docked",
+        rect: { left: 120, top: 96, width: 460, height: 560 },
+      },
+  );
 
   interface PendingVersionSwitch {
     targetVersion: string;
@@ -271,24 +294,31 @@ export function WorkflowEditor({
     if (ui) onLayoutMetadataChange(ui);
   }, [state.document.meta.workflowUi, state.activeWorkflow, onLayoutMetadataChange]);
 
+  // Persist inspector docked/floating placement to localStorage.
+  useEffect(() => {
+    savePlacement(localStorageKey, placement);
+  }, [placement, localStorageKey]);
+
+  const toggleDock = useCallback(() => {
+    setPlacement((p) => {
+      if (p.mode === "docked") {
+        const seeded = clampRect(
+          {
+            left: Math.max(24, window.innerWidth - inspectorWidth - 40),
+            top: 84,
+            width: Math.max(inspectorWidth, 460),
+            height: Math.min(window.innerHeight - 120, 640),
+          },
+          { w: window.innerWidth, h: window.innerHeight },
+        );
+        return { mode: "floating", rect: seeded };
+      }
+      return { ...p, mode: "docked" };
+    });
+  }, [inspectorWidth]);
+
   // No longer using the Web Fullscreen API — it is unreliable in Tauri's WKWebView.
   // Fullscreen is simulated via CSS (position:fixed / inset:0) instead.
-
-  const handleInspectorResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    const startX = e.clientX;
-    const startWidth = inspectorWidth;
-    const onMove = (ev: MouseEvent) => {
-      const delta = startX - ev.clientX;
-      setInspectorWidth(Math.max(360, startWidth + delta));
-    };
-    const onUp = () => {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-    };
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  }, [inspectorWidth]);
 
   const handleToggleFullscreen = useCallback(() => {
     setIsFullscreen((v) => !v);
@@ -923,6 +953,7 @@ export function WorkflowEditor({
         onKeyDown={handleKeyDown}
         tabIndex={-1}
       >
+        <style>{INSPECTOR_TRANSLUCENCY_CSS}</style>
         {chrome?.tabs !== false && showTabs && (
           <WorkflowTabs
             workflows={workflows}
@@ -1056,21 +1087,13 @@ export function WorkflowEditor({
             )}
           </div>
           {inspectorVisible && (
-            <>
-              <div
-                onMouseDown={handleInspectorResizeStart}
-                style={{
-                  width: 3,
-                  flexShrink: 0,
-                  cursor: "col-resize",
-                  background: "transparent",
-                  borderLeft: "1px solid #E2E8F0",
-                  transition: "background 0.15s",
-                  zIndex: 10,
-                }}
-                onMouseEnter={e => (e.currentTarget.style.background = "#CBD5E1")}
-                onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
-              />
+            <InspectorFrame
+              mode={placement.mode}
+              rect={placement.rect}
+              dockedWidth={inspectorWidth}
+              onRectChange={(rect) => setPlacement((p) => ({ ...p, rect }))}
+              onDockedWidthChange={setInspectorWidth}
+            >
               <Inspector
                 document={state.document}
                 selection={state.selection}
@@ -1080,9 +1103,10 @@ export function WorkflowEditor({
                 onSelectionChange={handleSelectionChange}
                 onClose={() => handleSelectionChange(null)}
                 onRequestDeleteState={requestDeleteState}
-                width={inspectorWidth}
+                docked={placement.mode === "docked"}
+                onToggleDock={toggleDock}
               />
-            </>
+            </InspectorFrame>
           )}
         </div>
         {pendingAddState !== null && state.activeWorkflow && (
