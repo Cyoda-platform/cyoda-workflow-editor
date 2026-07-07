@@ -98,21 +98,23 @@ semantics: `props.manual ? m.noneManual : m.noneAutomated`, plus a
 manual (`inspector/CriterionField.tsx:27-40`). That copy is wrong and
 misleading for a workflow.
 
-Make the empty-state text and hint **injectable** rather than hard-coded:
+Make the empty-state text **injectable** rather than hard-coded, and show an
+always-visible caption above the field for the workflow host. To avoid
+duplicated copy, the purpose explanation lives in **one** place — the caption —
+and the empty state carries only a short "none set" line:
 
-- Add optional props `emptyText?: string` and `emptyHint?: string` (and suppress
-  the transition-specific automated warning when they are supplied) to
-  `CriterionField`. Existing transition callers keep today's behaviour by
-  omitting them (defaults preserve current copy).
-- `CriterionSection` selects the copy by `host.kind`: for a workflow host it
-  passes workflow-flavoured strings; otherwise it passes nothing and the
-  transition defaults apply.
+- Add an optional prop `emptyText?: string` to `CriterionField`. When supplied,
+  it replaces the transition-flavoured empty text *and* suppresses the
+  transition-specific automated warning. Existing transition callers omit it and
+  keep today's behaviour.
+- `CriterionSection` branches on `host.kind`: for a workflow host it renders the
+  caption above the field and passes `emptyText`; otherwise it renders neither
+  and the transition defaults apply.
 - New i18n keys under `criterion` in `i18n/en.ts`, wording approved:
-  - `workflowNone`: "No workflow criterion set."
-  - `workflowNoneHint`: "Without a criterion this workflow is considered for
-    every entity of its model. Add one to disambiguate when multiple workflows
-    target the same entity model."
-  - a short section caption to the same effect (shown above the field).
+  - `workflowCaption` (always shown above the field): "Determines whether this
+    workflow applies to an entity of its model — set one to disambiguate when
+    several workflows target the same model."
+  - `workflowNone` (empty-state line): "No workflow criterion set."
 
 This addresses the disambiguation purpose in the UI copy without introducing a
 validation rule.
@@ -170,8 +172,8 @@ the workflow remains selected — the correct behaviour. No change needed.
 **React (`@cyoda/workflow-react`):** mirror `tests/criterionInline.test.tsx`
 for `WorkflowForm`:
 - Selecting a workflow shows the criterion section.
-- The empty state shows the workflow copy (`workflowNone`/`workflowNoneHint`),
-  not the automated-transition warning.
+- The empty state shows the workflow copy (caption `workflowCaption` +
+  `workflowNone`), not the automated-transition warning.
 - "Add" dispatches `setCriterion` with `host.kind === "workflow"`.
 - Invalid JSON disables Apply; valid JSON commits.
 - "Remove" dispatches `criterion: undefined`.
