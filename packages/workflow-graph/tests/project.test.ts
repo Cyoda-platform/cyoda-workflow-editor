@@ -202,34 +202,4 @@ describe("projectToGraph", () => {
     expect(edge && edge.kind === "transition" && edge.summary.processor?.kind).toBe("single");
     expect(edge && edge.kind === "transition" && edge.summary.execution?.kind).toBe("sync");
   });
-
-  test("processing-state category for states with processor-bearing outgoing transitions", () => {
-    const graph = project({
-      importMode: "MERGE",
-      workflows: [
-        {
-          version: "1.0",
-          name: "wf",
-          initialState: "a",
-          active: true,
-          states: {
-            a: {
-              transitions: [
-                {
-                  name: "t",
-                  next: "b",
-                  manual: false,
-                  disabled: false,
-                  processors: [{ type: "externalized", name: "p" }],
-                },
-              ],
-            },
-            b: { transitions: [] },
-          },
-        },
-      ],
-    });
-    const a = graph.nodes.find((n) => n.kind === "state" && n.stateCode === "a");
-    expect(a && a.kind === "state" && a.category).toBe("PROCESSING_STATE");
-  });
 });

@@ -18,11 +18,6 @@ export interface StateNode {
   role: StateRole;
   /** True if any outgoing transition is disabled. Purely informational. */
   hasDisabledOutgoing: boolean;
-  /**
-   * Derived visual category used by the viewer. Not part of the spec roles;
-   * derived heuristically. Falls back to "STATE".
-   */
-  category: "STATE" | "MANUAL_REVIEW" | "PROCESSING_STATE";
 }
 
 export interface StartMarkerNode {

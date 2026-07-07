@@ -7,7 +7,8 @@
  * Constants are calibrated to the design tokens in
  * `packages/workflow-viewer/src/theme/tokens.ts`:
  *   - title font: 14px monospace  → ~8.5 px per character
- *   - node height is fixed at 72 px (two rows: category + title)
+ *   - node height is fixed at 72 px (boundary states show a category + title
+ *     row; ordinary states show a centered title only — height stays uniform)
  *   - horizontal padding inside node: 8 px each side (the node has `padding: "0 8px"`)
  *
  * Width is snapped to the next 16-px grid increment so nodes align cleanly
