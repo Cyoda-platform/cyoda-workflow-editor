@@ -2,6 +2,7 @@ import type { DomainPatch, Workflow } from "@cyoda/workflow-core";
 import { useMessages } from "../i18n/context.js";
 import { CheckboxField, FieldGroup, TextField } from "./fields.js";
 import { AnnotationsField } from "./AnnotationsField.js";
+import { CriterionSection } from "./CriterionForm.js";
 
 export function WorkflowForm({
   workflow,
@@ -90,6 +91,12 @@ export function WorkflowForm({
         onRemove={() =>
           onDispatch({ op: "setAnnotations", target: { kind: "workflow", workflow: workflow.name } })
         }
+      />
+      <CriterionSection
+        host={{ kind: "workflow", workflow: workflow.name }}
+        criterion={workflow.criterion}
+        disabled={disabled}
+        onDispatch={onDispatch}
       />
     </FieldGroup>
   );

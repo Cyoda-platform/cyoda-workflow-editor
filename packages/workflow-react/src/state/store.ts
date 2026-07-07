@@ -53,8 +53,10 @@ function summarize(patch: DomainPatch): string {
       return `Remove processor`;
     case "reorderProcessor":
       return `Reorder processor`;
-    case "setCriterion":
-      return patch.criterion ? `Set criterion` : `Clear criterion`;
+    case "setCriterion": {
+      const scope = patch.host.kind === "workflow" ? "workflow criterion" : "criterion";
+      return patch.criterion ? `Set ${scope}` : `Clear ${scope}`;
+    }
     case "setAnnotations":
       return patch.annotations ? `Set annotations` : `Clear annotations`;
     case "setImportMode":

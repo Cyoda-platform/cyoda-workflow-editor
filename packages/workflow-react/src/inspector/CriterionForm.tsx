@@ -1,5 +1,7 @@
 import type { Criterion, DomainPatch, HostRef } from "@cyoda/workflow-core";
 import type { Selection } from "../state/types.js";
+import { useMessages } from "../i18n/context.js";
+import { colors } from "../style/tokens.js";
 import { CriterionField } from "./CriterionField.js";
 
 function criterionModelKey(host: HostRef): string {
@@ -21,15 +23,28 @@ export function CriterionSection({
   onDispatch: (patch: DomainPatch) => void;
   onSelectionChange?: (selection: Selection) => void;
 }) {
+  const m = useMessages().criterion;
+  const isWorkflow = host.kind === "workflow";
   const path = ["criterion"];
   return (
-    <CriterionField
-      value={criterion}
-      manual={manual}
-      disabled={disabled}
-      modelKey={criterionModelKey(host)}
-      onCommit={(next) => onDispatch({ op: "setCriterion", host, path, criterion: next })}
-      onRemove={() => onDispatch({ op: "setCriterion", host, path, criterion: undefined })}
-    />
+    <>
+      {isWorkflow && (
+        <p
+          data-testid="workflow-criterion-caption"
+          style={{ margin: "0 0 6px", fontSize: 12, lineHeight: 1.4, color: colors.textSecondary }}
+        >
+          {m.workflowCaption}
+        </p>
+      )}
+      <CriterionField
+        value={criterion}
+        manual={manual}
+        disabled={disabled}
+        modelKey={criterionModelKey(host)}
+        emptyText={isWorkflow ? m.workflowNone : undefined}
+        onCommit={(next) => onDispatch({ op: "setCriterion", host, path, criterion: next })}
+        onRemove={() => onDispatch({ op: "setCriterion", host, path, criterion: undefined })}
+      />
+    </>
   );
 }
