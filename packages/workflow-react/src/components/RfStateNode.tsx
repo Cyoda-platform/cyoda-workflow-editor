@@ -35,27 +35,7 @@ function StateRoleIcon({ label, color }: { label: string; color: string }): Reac
       </svg>
     );
   }
-  if (label === "MANUAL REVIEW") {
-    return (
-      <svg {...common} viewBox="0 0 10 10">
-        <path d="M5 2.2 L7 5 L5 7.8 L3 5 Z" />
-        <circle cx="5" cy="5" r="0.8" fill={color} stroke="none" />
-      </svg>
-    );
-  }
-  if (label === "PROCESSING" || label === "PROCESSING STATE") {
-    return (
-      <svg {...common} viewBox="0 0 10 10">
-        <circle cx="5" cy="5" r="2.6" />
-        <path d="M5 1.4 V2.7 M5 7.3 V8.6 M1.4 5 H2.7 M7.3 5 H8.6" />
-      </svg>
-    );
-  }
-  return (
-    <svg {...common} viewBox="0 0 10 10">
-      <circle cx="5" cy="5" r="2.2" fill={color} stroke="none" />
-    </svg>
-  );
+  return null;
 }
 
 export interface RfStateNodeData {
@@ -103,7 +83,7 @@ function RfStateNodeImpl({ data, selected, id }: NodeProps<RfStateNodeData>) {
         transition: "opacity 0.15s ease",
       }}
       data-testid={`rf-state-${node.stateCode}`}
-      aria-label={`${category} state: ${node.stateCode}`}
+      aria-label={category ? `${category} state: ${node.stateCode}` : `state: ${node.stateCode}`}
       onMouseEnter={() => setShowAnchors(true)}
       onMouseLeave={() => setShowAnchors(false)}
     >
@@ -137,24 +117,26 @@ function RfStateNodeImpl({ data, selected, id }: NodeProps<RfStateNodeData>) {
           padding: "0 8px",
         }}
       >
-        <div
-          style={{
-            color: palette.meta,
-            fontSize: typography.stateCategory.size,
-            fontWeight: typography.stateCategory.weight,
-            letterSpacing: typography.stateCategory.tracking,
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 4,
-            width: "100%",
-            textAlign: "center",
-          }}
-          data-testid={`rf-state-${node.stateCode}-category`}
-        >
-          <StateRoleIcon label={category} color={palette.meta} />
-          {category}
-        </div>
+        {category && (
+          <div
+            style={{
+              color: palette.meta,
+              fontSize: typography.stateCategory.size,
+              fontWeight: typography.stateCategory.weight,
+              letterSpacing: typography.stateCategory.tracking,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 4,
+              width: "100%",
+              textAlign: "center",
+            }}
+            data-testid={`rf-state-${node.stateCode}-category`}
+          >
+            <StateRoleIcon label={category} color={palette.meta} />
+            {category}
+          </div>
+        )}
         <div
           style={{
             color: palette.title,

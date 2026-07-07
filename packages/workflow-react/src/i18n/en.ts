@@ -20,8 +20,6 @@ export const defaultMessages = {
     statesTitle: "States",
     stateInitial: "Initial — workflow entry point",
     stateDefault: "Regular state",
-    stateProcessing: "Processing — automated work",
-    stateManualReview: "Manual review — needs a person",
     stateTerminal: "Terminal — workflow ends here",
     stateError: "Red border — validation error",
     stateWarning: "Amber border — validation warning",

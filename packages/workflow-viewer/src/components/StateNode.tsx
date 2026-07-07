@@ -31,23 +31,7 @@ function StateRoleIcon({ label, color }: { label: string; color: string }) {
   if (label === "TERMINAL") {
     return <svg {...common} viewBox="0 0 10 10"><rect x="1.8" y="1.8" width="6.4" height="6.4" rx="1" fill={color} stroke="none" /></svg>;
   }
-  if (label === "MANUAL REVIEW") {
-    return (
-      <svg {...common} viewBox="0 0 10 10">
-        <path d="M5 2.2 L7 5 L5 7.8 L3 5 Z" />
-        <circle cx="5" cy="5" r="0.8" fill={color} stroke="none" />
-      </svg>
-    );
-  }
-  if (label === "PROCESSING" || label === "PROCESSING STATE") {
-    return (
-      <svg {...common} viewBox="0 0 10 10">
-        <circle cx="5" cy="5" r="2.6" />
-        <path d="M5 1.4 V2.7 M5 7.3 V8.6 M1.4 5 H2.7 M7.3 5 H8.6" />
-      </svg>
-    );
-  }
-  return <svg {...common} viewBox="0 0 10 10"><circle cx="5" cy="5" r="2.2" fill={color} stroke="none" /></svg>;
+  return null;
 }
 
 export function StateNodeView({
@@ -86,7 +70,7 @@ export function StateNodeView({
       onMouseLeave={onHoverLeave}
       style={{ cursor: "pointer" }}
       data-testid={`state-node-${node.stateCode}`}
-      aria-label={`${category} ${node.stateCode}`}
+      aria-label={category ? `${category} ${node.stateCode}` : node.stateCode}
       role="button"
       tabIndex={0}
     >
@@ -126,25 +110,28 @@ export function StateNodeView({
             }} />
           )}
 
-          {/* Category row: icon + label */}
-          <div
-            style={{
-              color: palette.meta,
-              fontSize: typography.stateCategory.size,
-              fontWeight: typography.stateCategory.weight,
-              letterSpacing: typography.stateCategory.tracking,
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 4,
-              width: "100%",
-              textAlign: "center",
-              position: "relative",
-            }}
-          >
-            <StateRoleIcon label={category} color={palette.meta} />
-            {category}
-          </div>
+          {/* Category row: icon + label. Only INITIAL/TERMINAL are labelled;
+              ordinary states carry no header row. */}
+          {category && (
+            <div
+              style={{
+                color: palette.meta,
+                fontSize: typography.stateCategory.size,
+                fontWeight: typography.stateCategory.weight,
+                letterSpacing: typography.stateCategory.tracking,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 4,
+                width: "100%",
+                textAlign: "center",
+                position: "relative",
+              }}
+            >
+              <StateRoleIcon label={category} color={palette.meta} />
+              {category}
+            </div>
+          )}
 
           {/* State code */}
           <div

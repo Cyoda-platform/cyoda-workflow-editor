@@ -22,8 +22,6 @@ export interface NodePalette {
   default: RolePaletteEntry;
   initial: RolePaletteEntry;
   terminal: TerminalPaletteEntry;
-  manualReview: RolePaletteEntry;
-  processing: RolePaletteEntry;
 }
 
 export interface EdgePalette {
@@ -87,11 +85,12 @@ export const workflowPalette: WorkflowPalette = {
     slate900: "#0F172A",
   },
   node: {
+    // Every non-initial, non-terminal state renders in this single blue.
     default: {
-      fill: "#F0FDFA",
-      border: "#2DD4BF",
-      meta: "#0F766E",
-      title: "#0F172A",
+      fill: "#F0F9FF",
+      border: "#7DD3FC",
+      meta: "#0369A1",
+      title: "#082F49",
     },
     initial: {
       fill: "#D1FAE5",
@@ -105,18 +104,6 @@ export const workflowPalette: WorkflowPalette = {
       meta: "#BE123C",
       title: "#4C0519",
       innerRing: "#FFFFFFBF",
-    },
-    manualReview: {
-      fill: "#F5F3FF",
-      border: "#C4B5FD",
-      meta: "#6D28D9",
-      title: "#2E1065",
-    },
-    processing: {
-      fill: "#F0F9FF",
-      border: "#7DD3FC",
-      meta: "#0369A1",
-      title: "#082F49",
     },
   },
   edge: {

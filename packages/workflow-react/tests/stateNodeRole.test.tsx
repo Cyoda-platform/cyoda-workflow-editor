@@ -11,14 +11,14 @@ function withRf(node: ReactNode) {
 
 afterEach(() => cleanup());
 
-function nodeData(role: StateNode["role"], stateCode: string, category?: StateNode["category"]) {
+function nodeData(role: StateNode["role"], stateCode: string) {
   const node: StateNode = {
     kind: "state",
     id: stateCode,
     workflow: "wf",
     stateCode,
     role,
-    category,
+    hasDisabledOutgoing: false,
   };
   return {
     node,
@@ -50,13 +50,13 @@ describe("state node role icons", () => {
     expect(initialNode.getAttribute("aria-label")).toContain("start");
   });
 
-  it("renders an icon glyph alongside the category label", () => {
+  it("renders an icon glyph alongside the category label for labelled roles", () => {
     render(
       withRf(
         <RfStateNode
-          id="processing"
+          id="start"
           type="stateNode"
-          data={nodeData("normal", "processing", "PROCESSING_STATE")}
+          data={nodeData("initial", "start")}
           selected={false}
           dragging={false}
           zIndex={0}
@@ -66,9 +66,31 @@ describe("state node role icons", () => {
         />,
       ),
     );
-    const cat = screen.getByTestId("rf-state-processing-category");
+    const cat = screen.getByTestId("rf-state-start-category");
     expect(cat.querySelector("svg")).not.toBeNull();
-    expect(cat.textContent).toContain("PROCESSING");
+    expect(cat.textContent).toContain("INITIAL");
+  });
+
+  it("omits the category header row for ordinary intermediate states", () => {
+    render(
+      withRf(
+        <RfStateNode
+          id="middle"
+          type="stateNode"
+          data={nodeData("normal", "middle")}
+          selected={false}
+          dragging={false}
+          zIndex={0}
+          isConnectable
+          xPos={0}
+          yPos={0}
+        />,
+      ),
+    );
+    expect(screen.queryByTestId("rf-state-middle-category")).toBeNull();
+    expect(screen.getByTestId("rf-state-middle").getAttribute("aria-label")).toBe(
+      "state: middle",
+    );
   });
 
   it("uses the TERMINAL label for terminal states", () => {
