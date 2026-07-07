@@ -29,8 +29,6 @@ function summarize(patch: DomainPatch): string {
       return `Rename workflow "${patch.from}" → "${patch.to}"`;
     case "setInitialState":
       return `Set initial state to "${patch.stateCode}"`;
-    case "setWorkflowCriterion":
-      return patch.criterion ? `Set workflow criterion` : `Clear workflow criterion`;
     case "addState":
       return `Add state "${patch.stateCode}"`;
     case "renameState":

@@ -59,13 +59,6 @@ export function applyPatch(
         wf.initialState = patch.stateCode;
         return;
       }
-      case "setWorkflowCriterion": {
-        const wf = draft.workflows.find((w) => w.name === patch.workflow);
-        if (!wf) return;
-        if (patch.criterion === undefined) delete wf.criterion;
-        else wf.criterion = patch.criterion;
-        return;
-      }
       case "addState": {
         const wf = draft.workflows.find((w) => w.name === patch.workflow);
         if (!wf) return;

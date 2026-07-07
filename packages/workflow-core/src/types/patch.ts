@@ -19,7 +19,6 @@ export type DomainPatch =
     }
   | { op: "renameWorkflow"; from: string; to: string }
   | { op: "setInitialState"; workflow: string; stateCode: StateCode }
-  | { op: "setWorkflowCriterion"; workflow: string; criterion?: Criterion }
   | { op: "addState"; workflow: string; stateCode: StateCode }
   | { op: "renameState"; workflow: string; from: StateCode; to: StateCode }
   | { op: "removeState"; workflow: string; stateCode: StateCode }
