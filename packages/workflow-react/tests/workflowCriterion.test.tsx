@@ -67,6 +67,39 @@ function renderWorkflowForm() {
   };
 }
 
+function workflowDocWithCriterion(): WorkflowEditorDocument {
+  const result = parseImportPayload(
+    JSON.stringify({
+      importMode: "MERGE",
+      workflows: [
+        {
+          version: "1.0",
+          name: "wf",
+          initialState: "start",
+          active: true,
+          criterion: { type: "simple", jsonPath: "$.kind", operation: "EQUALS", value: "order" },
+          states: { start: { transitions: [] } },
+        },
+      ],
+    }),
+  );
+  if (!result.document) throw new Error("fixture parse failed");
+  return result.document;
+}
+
+function renderWorkflowFormWithCriterion() {
+  const workflow = workflowDocWithCriterion().session.workflows[0]!;
+  const onDispatch = vi.fn<(patch: DomainPatch) => void>();
+  return {
+    ...render(
+      <I18nContext.Provider value={defaultMessages}>
+        <WorkflowForm workflow={workflow} disabled={false} onDispatch={onDispatch} />
+      </I18nContext.Provider>,
+    ),
+    onDispatch,
+  };
+}
+
 describe("workflow criterion editing", () => {
   it("shows the workflow caption and empty copy, not the transition warning", () => {
     renderWorkflowForm();
@@ -84,6 +117,17 @@ describe("workflow criterion editing", () => {
       host: { kind: "workflow", workflow: "wf" },
       path: ["criterion"],
       criterion: { type: "simple" },
+    });
+  });
+
+  it("Remove dispatches setCriterion with a workflow host and criterion undefined", () => {
+    const view = renderWorkflowFormWithCriterion();
+    fireEvent.click(view.getByTestId("inspector-criterion-remove"));
+    expect(view.onDispatch).toHaveBeenCalledWith({
+      op: "setCriterion",
+      host: { kind: "workflow", workflow: "wf" },
+      path: ["criterion"],
+      criterion: undefined,
     });
   });
 
