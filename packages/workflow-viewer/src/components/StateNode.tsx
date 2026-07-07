@@ -70,7 +70,7 @@ export function StateNodeView({
       onMouseLeave={onHoverLeave}
       style={{ cursor: "pointer" }}
       data-testid={`state-node-${node.stateCode}`}
-      aria-label={category ? `${category} ${node.stateCode}` : node.stateCode}
+      aria-label={category ? `${category} ${node.stateCode}` : `state ${node.stateCode}`}
       role="button"
       tabIndex={0}
     >

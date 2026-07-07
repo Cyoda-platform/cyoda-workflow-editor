@@ -26,3 +26,10 @@ unchanged. Transition/edge coloring is untouched.
 - **`@cyoda/workflow-react`**: **Breaking:** remove the `help.stateProcessing`
   and `help.stateManualReview` i18n message keys; the Help legend no longer lists
   those two swatches.
+
+**Downstream:** audit `cyoda-dev-console` for any use of `StateNode.category`,
+the `manualReview`/`processing` `NodePalette` tokens, or the `stateProcessing`/
+`stateManualReview` i18n keys before adopting these versions — all now fail to
+typecheck. The Cyoda Launchpad `CyodaWorkflowDiagram` renderer needs a matching
+palette update (intermediate states changed from teal to blue) to stay visually
+identical.
