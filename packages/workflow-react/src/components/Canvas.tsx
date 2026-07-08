@@ -1659,6 +1659,9 @@ function CanvasInner({
   const onEdgeMouseLeave: EdgeMouseHandler = useCallback(() => setHoveredId(null), []);
 
   const onNodeClick: NodeMouseHandler = (_, node) => {
+    // A reconnect drop that lands on a node can synthesize a trailing click;
+    // ignore it so re-anchoring never selects a state.
+    if (isReconnectingRef.current) return;
     const data = node.data as RfStateNodeData;
     onSelectionChange({
       kind: "state",
@@ -1867,11 +1870,21 @@ function CanvasInner({
           onNodesChange={readOnly ? undefined : handleNodesChange}
           onNodeClick={onNodeClick}
           onEdgeClick={onEdgeClick}
-          onPaneClick={() => onSelectionChange(activeWorkflow ? { kind: "workflow", workflow: activeWorkflow } : null)}
+          onPaneClick={() => {
+            // A reconnect that ends over the pane synthesizes a trailing pane
+            // click; ignore it so re-anchoring never selects the workflow.
+            if (isReconnectingRef.current) return;
+            onSelectionChange(activeWorkflow ? { kind: "workflow", workflow: activeWorkflow } : null);
+          }}
           onConnect={readOnly ? undefined : onConnect}
           onReconnect={readOnly ? undefined : onReconnect}
           onReconnectStart={readOnly ? undefined : () => { isReconnectingRef.current = true; }}
-          onReconnectEnd={readOnly ? undefined : () => { isReconnectingRef.current = false; }}
+          // Clear the guard on the next macrotask, AFTER the browser dispatches
+          // the trailing click that follows pointerup — otherwise that click
+          // (onEdgeClick/onNodeClick) fires with the guard already cleared and
+          // selects the transition/state, popping the inspector open on a
+          // re-anchor. See the reconnect-guard timing bug.
+          onReconnectEnd={readOnly ? undefined : () => { setTimeout(() => { isReconnectingRef.current = false; }, 0); }}
           onNodesDelete={readOnly ? undefined : onNodesDelete}
           onEdgesDelete={readOnly ? undefined : onEdgesDelete}
           onNodeDragStart={readOnly ? undefined : handleNodeDragStart}
