@@ -193,10 +193,38 @@ export function ProcessorEditorModal({
             <CustomSelectInput
               value={draft.executionMode}
               options={EXECUTION_MODES.map((mode) => ({ value: mode, label: mode }))}
-              onChange={(next) => setDraft((current) => ({ ...current, executionMode: next as ExecutionMode }))}
+              onChange={(next) =>
+                setDraft((current) => ({
+                  ...current,
+                  executionMode: next as ExecutionMode,
+                  // startNewTxOnDispatch is only valid for COMMIT_BEFORE_DISPATCH.
+                  startNewTxOnDispatch:
+                    next === "COMMIT_BEFORE_DISPATCH" ? current.startNewTxOnDispatch : false,
+                }))
+              }
               testId="processor-execution-mode"
             />
           </FormField>
+
+          <label
+            style={
+              draft.executionMode === "COMMIT_BEFORE_DISPATCH"
+                ? checkboxRowStyle
+                : { ...checkboxRowStyle, opacity: 0.5 }
+            }
+            title="Only for COMMIT_BEFORE_DISPATCH: open a fresh transaction context for the dispatched call."
+          >
+            <input
+              type="checkbox"
+              checked={draft.startNewTxOnDispatch}
+              disabled={disabled || draft.executionMode !== "COMMIT_BEFORE_DISPATCH"}
+              onChange={(event) =>
+                setDraft((current) => ({ ...current, startNewTxOnDispatch: event.target.checked }))
+              }
+              data-testid="processor-start-new-tx"
+            />
+            <span>Start new transaction on dispatch</span>
+          </label>
 
           <label style={checkboxRowStyle}>
             <input
@@ -246,6 +274,20 @@ export function ProcessorEditorModal({
                 setDraft((current) => ({ ...current, retryPolicy: event.target.value }))
               }
               style={inputStyle}
+            />
+          </FormField>
+
+          <FormField label="Context">
+            <input
+              type="text"
+              value={draft.context}
+              placeholder="passed verbatim as request parameters"
+              disabled={disabled}
+              onChange={(event) =>
+                setDraft((current) => ({ ...current, context: event.target.value }))
+              }
+              data-testid="processor-context-input"
+              style={disabled ? disabledInputStyle : inputStyle}
             />
           </FormField>
 
