@@ -1313,7 +1313,12 @@ function buildReconnectTransaction(
         summary: `Reconnect transition "${transition.name}"`,
         patches,
         inverses,
-        selectionAfter: { kind: "transition", transitionUuid: edge.id },
+        // A pure re-anchor is a layout tweak — preserve the current selection
+        // (omitting selectionAfter). Changing the target state is a structural
+        // edit, so select the transition.
+        ...(targetChanged
+          ? { selectionAfter: { kind: "transition" as const, transitionUuid: edge.id } }
+          : {}),
       },
     };
   }
