@@ -17,7 +17,8 @@ import {
   type WorkflowEditorDocument,
   type WorkflowUiMeta,
 } from "@cyoda/workflow-core";
-import { estimateNodeSize, type LayoutOptions, type PinnedNode } from "@cyoda/workflow-layout";
+import { estimateNodeSize, type LayoutOptions, type LayoutPreset, type PinnedNode } from "@cyoda/workflow-layout";
+import { loadLayoutPref, saveLayoutPref, type LayoutPref, type Orientation } from "./layoutPref.js";
 import {
   EditorConfigContext,
   I18nContext,
@@ -217,6 +218,9 @@ export function WorkflowEditor({
   const [helpOpen, setHelpOpen] = useState(false);
   const [reconnectError, setReconnectError] = useState<string | null>(null);
   const [layoutKey, setLayoutKey] = useState(0);
+  const [layoutPref, setLayoutPref] = useState<LayoutPref>(() =>
+    loadLayoutPref(localStorageKey, layoutOptions),
+  );
   const [activeSurface, setActiveSurface] = useState<WorkflowEditorActiveSurface>("graph");
   const [jsonStatus, setJsonStatus] = useState<JsonEditStatus>({ status: "idle" });
   const [openIssueSeverity, setOpenIssueSeverity] = useState<IssueSeverity | null>(null);
@@ -446,6 +450,37 @@ export function WorkflowEditor({
     // Bump layoutKey to force Canvas to re-run ELK.
     setLayoutKey((k) => k + 1);
   }, [state.activeWorkflow, state.document, actions]);
+
+  // Persist the orientation/density preference.
+  useEffect(() => {
+    saveLayoutPref(localStorageKey, layoutPref);
+  }, [layoutPref, localStorageKey]);
+
+  // Adopt host-driven orientation/density when the layoutOptions prop changes.
+  // The user's menu choice otherwise wins until the host changes the prop.
+  const propLayoutRef = useRef<{ orientation?: Orientation; preset?: LayoutPreset }>({
+    orientation: layoutOptions?.orientation,
+    preset: layoutOptions?.preset,
+  });
+  useEffect(() => {
+    const nextO = layoutOptions?.orientation;
+    const nextP = layoutOptions?.preset;
+    if (nextO === propLayoutRef.current.orientation && nextP === propLayoutRef.current.preset) return;
+    propLayoutRef.current = { orientation: nextO, preset: nextP };
+    setLayoutPref((prev) => ({
+      orientation: nextO ?? prev.orientation,
+      preset: nextP ?? prev.preset,
+    }));
+  }, [layoutOptions?.orientation, layoutOptions?.preset]);
+
+  // Change orientation/density and re-arrange from scratch under the new choice.
+  const applyLayoutPref = useCallback(
+    (update: Partial<LayoutPref>) => {
+      setLayoutPref((prev) => ({ ...prev, ...update }));
+      handleAutoLayout();
+    },
+    [handleAutoLayout],
+  );
 
   const openAddStateModal = useCallback((position?: { x: number; y: number }) => {
     // For toolbar/keyboard adds (no explicit position) fall back to the centre
@@ -769,11 +804,17 @@ export function WorkflowEditor({
     return wf.states[pendingConnect.fromState] ?? null;
   }, [pendingConnect, state.document]);
 
-  const orientation = layoutOptions?.orientation ?? "vertical";
-  // Merge pinned positions from editor metadata into layout options.
+  const orientation = layoutPref.orientation;
+  // Merge the user's orientation/density preference and pinned positions into
+  // the host-provided layout options.
   const effectiveLayoutOptions = useMemo<LayoutOptions>(
-    () => ({ ...layoutOptions, pinned: pinnedNodes }),
-    [layoutOptions, pinnedNodes],
+    () => ({
+      ...layoutOptions,
+      orientation: layoutPref.orientation,
+      preset: layoutPref.preset,
+      pinned: pinnedNodes,
+    }),
+    [layoutOptions, layoutPref, pinnedNodes],
   );
   const savedViewport =
     state.activeWorkflow
@@ -864,6 +905,8 @@ export function WorkflowEditor({
         onUndo={!readOnly ? actions.undo : undefined}
         onRedo={!readOnly ? actions.redo : undefined}
         onAutoLayout={!readOnly ? handleAutoLayout : undefined}
+        onSetLayoutOrientation={!readOnly ? (o) => applyLayoutPref({ orientation: o }) : undefined}
+        onSetLayoutDensity={!readOnly ? (p) => applyLayoutPref({ preset: p }) : undefined}
         isFullscreen={isFullscreen}
         onToggleFullscreen={handleToggleFullscreen}
         resizeKey={inspectorVisible ? 1 : 0}
