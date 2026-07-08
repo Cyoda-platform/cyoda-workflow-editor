@@ -1,14 +1,10 @@
 import { z } from "zod";
+import { AnnotationsSchema } from "./annotations.js";
 import { CriterionSchema } from "./criterion.js";
 import { NameSchema } from "./name.js";
 import { ProcessorSchema } from "./processor.js";
 
-/**
- * Client-owned metadata object (cyoda-go 0.8.1). Object-only by contract:
- * arrays/primitives/null are rejected. Inner keys/values are arbitrary JSON and
- * are never inspected.
- */
-export const AnnotationsSchema = z.record(z.string(), z.unknown());
+export { AnnotationsSchema } from "./annotations.js";
 
 /**
  * Transition-level scheduling (cyoda-go v0.8.0). A schema/SPI placeholder: a
@@ -27,6 +23,7 @@ export const TransitionSchema = z.object({
   disabled: z.boolean().default(false),
   annotations: AnnotationsSchema.optional(),
   criterion: CriterionSchema.optional(),
+  criterionAnnotations: AnnotationsSchema.optional(),
   processors: z.array(ProcessorSchema).optional(),
   schedule: TransitionScheduleSchema.optional(),
 });
@@ -49,6 +46,7 @@ export const WorkflowSchema = z.object({
   active: z.boolean().optional().default(true),
   annotations: AnnotationsSchema.optional(),
   criterion: CriterionSchema.optional(),
+  criterionAnnotations: AnnotationsSchema.optional(),
   states: z
     .record(NameSchema, StateSchema)
     .refine((s) => Object.keys(s).length > 0, "Workflow must have at least one state"),

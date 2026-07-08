@@ -12,9 +12,10 @@ const isObject = (v: unknown): v is UnknownRecord =>
  *
  * Only applies to criterion-shaped nodes (type: simple | lifecycle | array).
  *
- * `annotations` values (workflow/state/transition level) are engine-opaque
- * client metadata: they are copied through verbatim and never recursed into, so
- * a key literally named `operatorType` inside a client annotation is left alone.
+ * `annotations` / `criterionAnnotations` values (workflow/state/transition/
+ * processor level) are engine-opaque client metadata: they are copied through
+ * verbatim and never recursed into, so a key literally named `operatorType`
+ * inside a client annotation is left alone.
  */
 export function normalizeOperatorAlias(raw: unknown): unknown {
   if (Array.isArray(raw)) {
@@ -24,12 +25,16 @@ export function normalizeOperatorAlias(raw: unknown): unknown {
 
   const result: UnknownRecord = {};
   for (const [k, v] of Object.entries(raw)) {
-    // `annotations` is engine-opaque, client-owned metadata (workflow/state/
-    // transition level, cyoda-go 0.8.1). Never recurse into it: aliasing
-    // operatorType->operation inside a client's opaque object would corrupt it,
-    // and a value carrying both keys would throw. Clone so the "returns a new
-    // tree" invariant in this function's docstring still holds.
-    result[k] = k === "annotations" ? structuredClone(v) : normalizeOperatorAlias(v);
+    // `annotations` / `criterionAnnotations` are engine-opaque, client-owned
+    // metadata (workflow/state/transition/processor level, cyoda-go 0.8.1+).
+    // Never recurse into them: aliasing operatorType->operation inside a
+    // client's opaque object would corrupt it, and a value carrying both keys
+    // would throw. Clone so the "returns a new tree" invariant in this
+    // function's docstring still holds.
+    result[k] =
+      k === "annotations" || k === "criterionAnnotations"
+        ? structuredClone(v)
+        : normalizeOperatorAlias(v);
   }
 
   const type = result["type"];

@@ -5,9 +5,10 @@ export type StateCode = string;
 export type TransitionName = string;
 
 /**
- * Engine-opaque, client-owned metadata attached to a workflow, state, or
- * transition (cyoda-go 0.8.1). Stored and round-tripped verbatim but never
- * interpreted by the engine; must be a JSON object (<= 64 KB per field).
+ * Engine-opaque, client-owned metadata attached to a workflow, state,
+ * transition, processor, or criterion (via criterionAnnotations) (cyoda-go
+ * 0.8.1+). Stored and round-tripped verbatim but never interpreted by the
+ * engine; must be a JSON object (<= 64 KB per field).
  *
  * NB: unrelated to `@cyoda/workflow-graph`'s `GraphAnnotation`, which is a
  * validation-issue overlay on the rendered graph.
@@ -22,6 +23,7 @@ export interface Workflow {
   active: boolean;
   annotations?: Annotations;
   criterion?: Criterion;
+  criterionAnnotations?: Annotations;
   states: Record<StateCode, State>;
 }
 
@@ -46,6 +48,7 @@ export interface Transition {
   disabled: boolean;
   annotations?: Annotations;
   criterion?: Criterion;
+  criterionAnnotations?: Annotations;
   processors?: Processor[];
   schedule?: TransitionSchedule;
 }

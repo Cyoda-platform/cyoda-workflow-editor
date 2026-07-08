@@ -1,4 +1,5 @@
 import type { FunctionConfig } from "./criterion.js";
+import type { Annotations } from "./workflow.js";
 
 // As of the v0.8 major bump the `scheduled` processor type has been removed;
 // `externalized` is the only canonical processor type.
@@ -15,6 +16,7 @@ export interface ExternalizedProcessor {
   name: string;
   executionMode?: ExecutionMode;
   startNewTxOnDispatch?: boolean;
+  annotations?: Annotations;
   config?: ExternalizedProcessorConfig;
 }
 
