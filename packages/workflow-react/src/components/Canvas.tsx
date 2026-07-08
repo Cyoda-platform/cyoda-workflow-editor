@@ -25,7 +25,9 @@ import type {
   StateNode as GraphStateNode,
   TransitionEdge,
 } from "@cyoda/workflow-graph";
-import { layoutGraph, estimateNodeSize, type LayoutOptions, type LayoutResult, type NodePosition } from "@cyoda/workflow-layout";
+import { layoutGraph, estimateNodeSize, type LayoutOptions, type LayoutPreset, type LayoutResult, type NodePosition } from "@cyoda/workflow-layout";
+import { LayoutOptionsMenu } from "./LayoutOptionsMenu.js";
+import type { Orientation } from "./layoutPref.js";
 import { ArrowMarkers } from "./ArrowMarkers.js";
 import { RfStateNode, type RfStateNodeData } from "./RfStateNode.js";
 import { RfTransitionEdge, type RfEdgeData } from "./RfTransitionEdge.js";
@@ -78,6 +80,10 @@ export interface CanvasProps {
   onUndo?: () => void;
   onRedo?: () => void;
   onAutoLayout?: () => void;
+  /** Set the auto-layout orientation from the layout-options menu. */
+  onSetLayoutOrientation?: (orientation: Orientation) => void;
+  /** Set the auto-layout density preset from the layout-options menu. */
+  onSetLayoutDensity?: (density: LayoutPreset) => void;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
   /**
@@ -1352,6 +1358,8 @@ function CanvasInner({
   onNodeDragStop,
   onPaneDoubleClick,
   newStatePositionRef,
+  onSetLayoutOrientation,
+  onSetLayoutDensity,
   layoutKey = 0,
   readOnly,
   showMinimap = true,
@@ -1370,6 +1378,7 @@ function CanvasInner({
   onTransitionLabelDragEnd,
 }: CanvasProps) {
   const [layout, setLayout] = useState<LayoutResult | null>(null);
+  const [layoutMenuOpen, setLayoutMenuOpen] = useState(false);
   const [nodes, setNodes] = useState<Node<RfStateNodeData>[]>([]);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const previousBasePositionsRef = useRef<Map<string, { x: number; y: number }> | null>(null);
@@ -1802,6 +1811,15 @@ function CanvasInner({
                 <CtrlBtn onClick={onAutoLayout} title="Auto-arrange (L)" testId="canvas-auto-layout">
                   <AutoArrangeIcon />
                 </CtrlBtn>
+                {onSetLayoutOrientation && onSetLayoutDensity && (
+                  <CtrlBtn
+                    onClick={() => setLayoutMenuOpen((v) => !v)}
+                    title="Layout options"
+                    testId="canvas-layout-options"
+                  >
+                    <LayoutOptionsIcon />
+                  </CtrlBtn>
+                )}
               </>
             )}
             {onHelp && (
@@ -1823,6 +1841,23 @@ function CanvasInner({
               <WorkflowSettingsIcon />
             </CtrlBtn>
           </div>
+        )}
+        {layoutMenuOpen && onSetLayoutOrientation && onSetLayoutDensity && (
+          <>
+            <div
+              onClick={() => setLayoutMenuOpen(false)}
+              style={{ position: "absolute", inset: 0, zIndex: 6 }}
+              data-testid="layout-options-backdrop"
+            />
+            <div className="nodrag nopan" style={{ position: "absolute", bottom: 16, left: 64, zIndex: 7 }}>
+              <LayoutOptionsMenu
+                orientation={orientation}
+                density={preset}
+                onSetOrientation={onSetLayoutOrientation}
+                onSetDensity={onSetLayoutDensity}
+              />
+            </div>
+          </>
         )}
         <ReactFlow
           nodes={nodes}
@@ -1969,6 +2004,18 @@ function HelpIcon() {
       <circle cx="12" cy="12" r="10" />
       <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
       <line x1="12" y1="17" x2="12.01" y2="17" />
+    </svg>
+  );
+}
+
+function LayoutOptionsIcon() {
+  // Sliders: two rows with a knob, evoking adjustable layout settings.
+  return (
+    <svg width="14" height="14" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="3" y1="7" x2="19" y2="7" />
+      <line x1="3" y1="15" x2="19" y2="15" />
+      <circle cx="8" cy="7" r="2.4" fill="white" />
+      <circle cx="14" cy="15" r="2.4" fill="white" />
     </svg>
   );
 }
