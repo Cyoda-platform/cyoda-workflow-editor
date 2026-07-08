@@ -16,6 +16,7 @@ export interface CriterionFieldProps {
   manual?: boolean;
   disabled: boolean;
   modelKey: string;
+  emptyText?: string;
   onCommit: (next: Criterion) => void;
   onRemove: () => void;
 }
@@ -25,10 +26,12 @@ const pretty = (c: Criterion): string => JSON.stringify(c, null, 2);
 export function CriterionField(props: CriterionFieldProps) {
   const m = useMessages().criterion;
   if (props.value === undefined) {
+    const emptyText = props.emptyText ?? (props.manual ? m.noneManual : m.noneAutomated);
+    const showWarning = props.emptyText === undefined && !props.manual;
     return (
       <div style={cardStyle} data-testid="criterion-summary-card">
-        <p style={summaryTextStyle}>{props.manual ? m.noneManual : m.noneAutomated}</p>
-        {!props.manual && (
+        <p style={summaryTextStyle}>{emptyText}</p>
+        {showWarning && (
           <p style={warnStyle} data-testid="criterion-automated-warning">{m.noneAutomatedWarning}</p>
         )}
         {!props.disabled && (

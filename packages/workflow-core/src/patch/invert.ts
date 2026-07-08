@@ -46,14 +46,6 @@ export function invertPatch(
       return { op: "setInitialState", workflow: patch.workflow, stateCode: wf.initialState };
     }
 
-    case "setWorkflowCriterion": {
-      const wf = findWorkflow(doc, patch.workflow);
-      if (!wf) return noop();
-      return wf.criterion
-        ? { op: "setWorkflowCriterion", workflow: patch.workflow, criterion: cloneCriterion(wf.criterion) }
-        : { op: "setWorkflowCriterion", workflow: patch.workflow };
-    }
-
     case "addState":
       return { op: "removeState", workflow: patch.workflow, stateCode: patch.stateCode };
 
