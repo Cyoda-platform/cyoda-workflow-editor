@@ -1,0 +1,31 @@
+{
+  "importMode": "REPLACE",
+  "workflows": [
+    {
+      "version": "1.2",
+      "name": "pc-annot-wf",
+      "initialState": "NONE",
+      "active": true,
+      "criterionAnnotations": { "displayName": "WF guard" },
+      "states": {
+        "NONE": {
+          "transitions": [
+            {
+              "name": "t",
+              "next": "NONE",
+              "manual": true,
+              "criterionAnnotations": { "displayName": "T guard" },
+              "processors": [
+                {
+                  "name": "p1",
+                  "type": "externalized",
+                  "annotations": { "displayName": "Proc One" }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
