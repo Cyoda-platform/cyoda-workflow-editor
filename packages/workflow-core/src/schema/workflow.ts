@@ -4,7 +4,7 @@ import { CriterionSchema } from "./criterion.js";
 import { NameSchema } from "./name.js";
 import { ProcessorSchema } from "./processor.js";
 
-export { AnnotationsSchema } from "./annotations.js";
+export { AnnotationsSchema };
 
 /**
  * Transition-level scheduling (cyoda-go v0.8.0). A schema/SPI placeholder: a
