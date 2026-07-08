@@ -17,3 +17,20 @@ test("workflow-settings button selects the workflow and shows the workflow form"
   fireEvent.click(screen.getByTestId("canvas-workflow-settings"));
   expect(screen.getByTestId("inspector-workflow-name")).toBeTruthy();
 });
+
+test("workflow-settings button toggles the workflow inspector open and closed", () => {
+  render(<WorkflowEditor document={doc} mode="editor" />);
+  const button = () => screen.getByTestId("canvas-workflow-settings");
+
+  // Opens the workflow inspector.
+  fireEvent.click(button());
+  expect(screen.getByTestId("inspector-workflow-name")).toBeTruthy();
+
+  // Clicking again closes it.
+  fireEvent.click(button());
+  expect(screen.queryByTestId("inspector-workflow-name")).toBeNull();
+
+  // And opens it again.
+  fireEvent.click(button());
+  expect(screen.getByTestId("inspector-workflow-name")).toBeTruthy();
+});

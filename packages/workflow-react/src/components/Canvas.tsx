@@ -49,6 +49,8 @@ export interface CanvasProps {
   layoutOptions?: LayoutOptions;
   savedViewport?: Viewport;
   onSelectionChange: (sel: Selection) => void;
+  /** Toggle the workflow-settings inspector from the control bar button. */
+  onToggleWorkflowSettings?: () => void;
   onViewportChange?: (viewport: Viewport) => void;
   onConnect?: (connection: Connection) => void;
   onReconnect?: (edge: Edge<RfEdgeData>, connection: Connection) => void;
@@ -1347,6 +1349,7 @@ function CanvasInner({
   issues,
   activeWorkflow,
   selection,
+  onToggleWorkflowSettings,
   layoutOptions,
   savedViewport,
   onSelectionChange,
@@ -1835,8 +1838,10 @@ function CanvasInner({
             )}
             <div style={{ height: 1, background: "#E2E8F0" }} />
             <CtrlBtn
-              onClick={() =>
-                onSelectionChange(activeWorkflow ? { kind: "workflow", workflow: activeWorkflow } : null)
+              onClick={
+                onToggleWorkflowSettings ??
+                (() =>
+                  onSelectionChange(activeWorkflow ? { kind: "workflow", workflow: activeWorkflow } : null))
               }
               title="Workflow settings"
               testId="canvas-workflow-settings"
