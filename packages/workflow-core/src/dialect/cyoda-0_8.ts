@@ -62,6 +62,7 @@ const WORKFLOW_FIELDS = [
   "active",
   "annotations",
   "criterion",
+  "criterionAnnotations",
   "states",
 ] as const;
 const STATE_FIELDS = ["transitions", "annotations"] as const;
@@ -72,6 +73,7 @@ const TRANSITION_FIELDS = [
   "annotations",
   "disabled",
   "criterion",
+  "criterionAnnotations",
   "processors",
   "schedule",
 ] as const;
@@ -80,6 +82,7 @@ const PROCESSOR_FIELDS = [
   "name",
   "executionMode",
   "startNewTxOnDispatch",
+  "annotations",
   "config",
 ] as const;
 const PROCESSOR_CONFIG_FIELDS = [
