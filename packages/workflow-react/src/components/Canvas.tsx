@@ -1870,7 +1870,12 @@ function CanvasInner({
           onNodesChange={readOnly ? undefined : handleNodesChange}
           onNodeClick={onNodeClick}
           onEdgeClick={onEdgeClick}
-          onPaneClick={() => onSelectionChange(activeWorkflow ? { kind: "workflow", workflow: activeWorkflow } : null)}
+          onPaneClick={() => {
+            // A reconnect that ends over the pane synthesizes a trailing pane
+            // click; ignore it so re-anchoring never selects the workflow.
+            if (isReconnectingRef.current) return;
+            onSelectionChange(activeWorkflow ? { kind: "workflow", workflow: activeWorkflow } : null);
+          }}
           onConnect={readOnly ? undefined : onConnect}
           onReconnect={readOnly ? undefined : onReconnect}
           onReconnectStart={readOnly ? undefined : () => { isReconnectingRef.current = true; }}
