@@ -43,6 +43,44 @@ describe("processor context field", () => {
   });
 });
 
+describe("processor annotations", () => {
+  it("hydrates existing annotations and round-trips edits into onApply", () => {
+    const { onApply } = renderModal({ ...base, annotations: { role: "reviewer" } });
+    const ta = screen.getByTestId("annotations-json-editor") as HTMLTextAreaElement;
+    expect(JSON.parse(ta.value)).toEqual({ role: "reviewer" });
+
+    fireEvent.change(ta, { target: { value: '{"role":"approver"}' } });
+    fireEvent.click(screen.getByTestId("inspector-annotations-apply"));
+    fireEvent.click(screen.getByTestId("processor-modal-apply"));
+
+    expect(onApply).toHaveBeenCalledTimes(1);
+    expect(onApply.mock.calls[0]![0].annotations).toEqual({ role: "approver" });
+  });
+
+  it("adds annotations from empty via the Add button and includes them on Apply", () => {
+    const { onApply } = renderModal(base);
+    fireEvent.click(screen.getByTestId("inspector-annotations-add"));
+    fireEvent.click(screen.getByTestId("processor-modal-apply"));
+
+    expect(onApply.mock.calls[0]![0].annotations).toEqual({});
+  });
+
+  it("omits annotations from the applied processor when never set", () => {
+    const { onApply } = renderModal(base);
+    fireEvent.click(screen.getByTestId("processor-modal-apply"));
+
+    expect(onApply.mock.calls[0]![0].annotations).toBeUndefined();
+  });
+
+  it("removing annotations clears them from the applied processor", () => {
+    const { onApply } = renderModal({ ...base, annotations: { role: "reviewer" } });
+    fireEvent.click(screen.getByTestId("inspector-annotations-remove"));
+    fireEvent.click(screen.getByTestId("processor-modal-apply"));
+
+    expect(onApply.mock.calls[0]![0].annotations).toBeUndefined();
+  });
+});
+
 describe("processor startNewTxOnDispatch field", () => {
   it("disables the flag unless execution mode is COMMIT_BEFORE_DISPATCH", () => {
     renderModal({ ...base, executionMode: "SYNC" });

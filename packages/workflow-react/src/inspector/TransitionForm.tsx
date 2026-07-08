@@ -333,6 +333,7 @@ export function TransitionForm({
           targetState={transition.next}
           manual={transition.manual}
           criterion={transition.criterion}
+          criterionAnnotations={transition.criterionAnnotations}
           disabled={disabled}
           onDispatch={onDispatch}
           onSelectionChange={onSelectionChange}

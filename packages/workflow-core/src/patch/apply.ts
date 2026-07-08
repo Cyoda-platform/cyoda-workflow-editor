@@ -217,20 +217,23 @@ export function applyPatch(
       }
       case "setAnnotations": {
         const t = patch.target;
-        let host: { annotations?: Record<string, unknown> } | undefined;
-        if (t.kind === "workflow") {
-          host = draft.workflows.find((w) => w.name === t.workflow);
-        } else if (t.kind === "state") {
-          host = draft.workflows.find((w) => w.name === t.workflow)?.states[t.stateCode];
+        let host: Record<string, unknown> | undefined;
+        let field = "annotations";
+        if (t.kind === "workflow") host = draft.workflows.find((w) => w.name === t.workflow) as unknown as Record<string, unknown> | undefined;
+        else if (t.kind === "state") host = draft.workflows.find((w) => w.name === t.workflow)?.states[t.stateCode] as unknown as Record<string, unknown> | undefined;
+        else if (t.kind === "transition") {
+          const loc = locateTransition(doc, t.transitionUuid);
+          if (loc) host = draft.workflows.find((w) => w.name === loc.workflow)?.states[loc.state]?.transitions[loc.index] as unknown as Record<string, unknown> | undefined;
+        } else if (t.kind === "workflowCriterion") {
+          host = draft.workflows.find((w) => w.name === t.workflow) as unknown as Record<string, unknown> | undefined; field = "criterionAnnotations";
         } else {
           const loc = locateTransition(doc, t.transitionUuid);
-          if (loc) {
-            host = draft.workflows.find((w) => w.name === loc.workflow)?.states[loc.state]?.transitions[loc.index];
-          }
+          if (loc) host = draft.workflows.find((w) => w.name === loc.workflow)?.states[loc.state]?.transitions[loc.index] as unknown as Record<string, unknown> | undefined;
+          field = "criterionAnnotations";
         }
         if (!host) return;
-        if (patch.annotations === undefined) delete host.annotations;
-        else host.annotations = patch.annotations;
+        if (patch.annotations === undefined) delete host[field];
+        else host[field] = patch.annotations;
         return;
       }
       case "setImportMode":

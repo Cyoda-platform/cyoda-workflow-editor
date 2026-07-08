@@ -95,6 +95,7 @@ export function WorkflowForm({
       <CriterionSection
         host={{ kind: "workflow", workflow: workflow.name }}
         criterion={workflow.criterion}
+        criterionAnnotations={workflow.criterionAnnotations}
         disabled={disabled}
         onDispatch={onDispatch}
       />
