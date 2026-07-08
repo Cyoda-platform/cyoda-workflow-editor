@@ -69,36 +69,35 @@ stricter type.
 
 ## Dialect / schema version — `src/dialect/`
 
-The 0.8 dialect targets cyoda-go 0.8.1, which enforces `DisallowUnknownFields`. The
-new fields must **not** be emitted to a 0.8.1 server, but **must** be emitted to 0.8.2.
+**Decision (per project owner): extend the existing `"0.8"` dialect in place — no new
+`"0.8.2"` dialect, and no `version`-tag restamp.** Patch-level dialect granularity
+isn't warranted: the project has near-zero adoption, 0.8.2 supersedes 0.8.1 (shipping
+now), and this exactly follows the precedent the schema-versions doc set for 0.8.1
+(*"a single MAJOR.MINOR-keyed dialect can carry the new field safely"*). `"0.8"` now
+targets cyoda-go 0.8.2; `LATEST_CYODA_VERSION` and `SUPPORTED_CYODA_VERSIONS` are
+unchanged (`["0.7", "0.8"]`).
 
-**Recommended: add a distinct `"0.8.2"` dialect** (`src/dialect/cyoda-0_8_2.ts`) that
-composes the 0.8 pass and adds the new-field deltas; keep `"0.8"` (0.8.1) unchanged so
-its allowlist strips the new fields. Set `LATEST_CYODA_VERSION = "0.8.2"` and add it to
-`SUPPORTED_CYODA_VERSIONS` (`src/dialect/version.ts`). Concretely:
+- Add `annotations` to the 0.8 processor wire-field allowlist, and
+  `criterionAnnotations` to the workflow and transition allowlists (ordered next to
+  `criterion`) in `src/dialect/cyoda-0_8.ts`.
+- Extend the output (`src/normalize/output.ts`) to emit the three new fields when
+  present — reuse/extend the existing `OutputOptions.annotations` flag the 0.8 dialect
+  already passes. Because all three are `omitempty`, a workflow that uses none of them
+  serialises **byte-identically** to today, so nothing changes for non-users.
+- The 0.7 dialect continues to omit all annotation fields.
+- **`version` tag:** round-trip verbatim (informational; cyoda-go restamps on its own
+  export). No `1.1 → 1.2` restamp — it would mutate user data and add diff noise for no
+  benefit, since the new fields are additive and accepted under any tag.
 
-- Extend the wire allowlist for the 0.8.2 dialect: add `annotations` to the
-  processor field set, and `criterionAnnotations` to the workflow and transition
-  field sets (ordered next to `criterion`).
-- Extend `outputWorkflow`/`outputTransition`/processor output
-  (`src/normalize/output.ts`) with an `OutputOptions` flag (e.g. extend the existing
-  `annotations` flag or add `criterionAnnotations` / `processorAnnotations`) to emit
-  the three new fields when present. The 0.8.2 dialect passes them; 0.8/0.7 do not.
-- **Schema `version` tag:** the in-document `version` is host/informational and the
-  editor round-trips it verbatim (per `ai/cyoda-schema-versions.md`). Because the new
-  fields are additive and accepted under any tag, the editor does **not** need to
-  restamp `1.1 → 1.2`. (Open question below.)
+Residual risk (accepted): a project pointed at a **0.8.1** server that *adds* one of
+the new annotations would get a 400 (`DisallowUnknownFields`). Given traction and the
+same-day 0.8.2 release this is a phantom case; if a real 0.8.1 pin ever needs the
+guarantee, split a `"0.8.2"` dialect then.
 
-> **Open decision for the schema maintainer (you):** distinct `"0.8.2"` dialect
-> (recommended — keeps 0.8.1 pins safe, follows the runbook) **vs.** just extend the
-> `"0.8"` dialect to mean 0.8.2 (simpler; risk only if a project pinned to a 0.8.1
-> server adds the new annotations, which would 400). Also confirm whether the editor
-> should restamp the emitted `version` tag to `"1.2"`.
-
-Per `ai/cyoda-schema-versions.md`, this file must gain a **v0.8.2 section** listing
-the wire changes before merge, and a **golden round-trip fixture** built from a real
-export of the released v0.8.2 binary must be added under `tests/dialect/` or
-`tests/golden/`.
+Per `ai/cyoda-schema-versions.md`, add a **v0.8.2 subsection under the `"0.8"` dialect**
+(mirroring the existing v0.8.1 subsection) listing the wire changes before merge, and a
+**golden round-trip fixture** built from a real export of the released v0.8.2 binary
+under `tests/dialect/` or `tests/golden/`.
 
 ## Editing — raw-JSON `AnnotationsField` (your chosen UX)
 
@@ -176,18 +175,19 @@ that would extend the summary — out of scope.)
 ## Versioning & downstream coordination
 
 Major-class (`@cyoda/workflow-core` canonical-model change) → ships as a 0.x **`minor`**.
-Coordinated `minor`/`patch` bumps for `-graph` (unchanged here, likely none), `-viewer`,
-`-react`. Changeset documents the new fields, the 0.8.2 dialect, and the downstream
-follow-up in `cyoda-dev-console` (add `"0.8.2"` to its `cyodaGoVersion` union and default
-new projects to it once v0.8.2 has released), per the schema-versions runbook step 8.
+Coordinated `minor`/`patch` bumps for `-viewer` and `-react` (`-graph` unchanged). Since
+the dialect version string is unchanged (`"0.8"`), `cyoda-dev-console` needs **no**
+`cyodaGoVersion` union change — the only downstream follow-up is picking up the new
+`@cyoda/workflow-*` versions (and the new fields are optional, so nothing breaks). The
+changeset documents the three new fields and the extended 0.8 wire output.
 
 ## Sequencing
 
 One coordinated change, but landed in this order so each layer is testable:
 
 1. **Core model + schema + normalize** (the three fields round-trip in-memory).
-2. **0.8.2 dialect + version constants + `ai/cyoda-schema-versions.md` section**
-   (wire round-trip; golden fixture once the binary is out).
+2. **Extend the `"0.8"` dialect (allowlist + emit) + `ai/cyoda-schema-versions.md`
+   v0.8.2 subsection** (wire round-trip; golden fixture once the binary is out).
 3. **Tooltip** (dedupe + displayName/description) — the primary deliverable.
 4. **Editing** (processor modal annotations; criterion-annotations `AnnotationsField`
    + `setAnnotations` criterion target).
@@ -198,4 +198,5 @@ One coordinated change, but landed in this order so each layer is testable:
 - Structured `displayName`/`description` inputs (raw JSON editor chosen).
 - Nested/leaf-level criterion sub-condition labelling (guard-level only, matching #384).
 - Edge-badge annotation indicators / projection changes.
-- Auto-restamping the workflow `version` tag (pending the open decision above).
+- Auto-restamping the workflow `version` tag (decided: round-trip verbatim).
+- A separate `"0.8.2"` dialect (decided: extend `"0.8"` in place).
