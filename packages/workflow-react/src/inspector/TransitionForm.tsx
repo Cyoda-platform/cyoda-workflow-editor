@@ -191,72 +191,77 @@ export function TransitionForm({
           </div>
         )}
 
-        {/* Move to different source state */}
-        {!disabled && (
+        {/* Source & target state — paired. Source is editable (move) only when
+            not read-only; auto-fit lets Target fill the row when Source is hidden. */}
+        <div style={twoColStyle}>
+          {!disabled && (
+            <SelectField
+              label="Source state"
+              value={stateCode as (typeof allStateNames)[number]}
+              options={stateOptions}
+              disabled={disabled}
+              onChange={(toState) => {
+                if (toState === stateCode) return;
+                onDispatch({
+                  op: "moveTransitionSource",
+                  workflow: workflow.name,
+                  fromState: stateCode,
+                  toState,
+                  transitionName: transition.name,
+                });
+              }}
+              testId="inspector-transition-source-state"
+            />
+          )}
           <SelectField
-            label="Source state"
-            value={stateCode as (typeof allStateNames)[number]}
+            label="Target state"
+            value={transition.next as (typeof allStateNames)[number]}
             options={stateOptions}
             disabled={disabled}
-            onChange={(toState) => {
-              if (toState === stateCode) return;
-              onDispatch({
-                op: "moveTransitionSource",
-                workflow: workflow.name,
-                fromState: stateCode,
-                toState,
-                transitionName: transition.name,
-              });
-            }}
-            testId="inspector-transition-source-state"
+            onChange={(next) => update({ next })}
+            testId="inspector-transition-next"
           />
-        )}
+        </div>
 
-        {/* Target state — dropdown instead of free text */}
-        <SelectField
-          label="Target state"
-          value={transition.next as (typeof allStateNames)[number]}
-          options={stateOptions}
-          disabled={disabled}
-          onChange={(next) => update({ next })}
-          testId="inspector-transition-next"
-        />
+        <div style={twoColStyle}>
+          <SelectField
+            label={messages.inspector.transitionType}
+            value={transition.manual ? "manual" : "automated"}
+            options={[
+              { value: "automated", label: messages.inspector.automated },
+              { value: "manual", label: messages.inspector.manual },
+            ]}
+            disabled={disabled}
+            onChange={(next) => update({ manual: next === "manual" })}
+            testId="inspector-transition-manual"
+          />
+          <CheckboxField
+            label={messages.inspector.disabled}
+            checked={transition.disabled}
+            disabled={disabled}
+            onChange={(next) => update({ disabled: next })}
+            testId="inspector-transition-disabled"
+          />
+        </div>
 
-        <SelectField
-          label={messages.inspector.transitionType}
-          value={transition.manual ? "manual" : "automated"}
-          options={[
-            { value: "automated", label: messages.inspector.automated },
-            { value: "manual", label: messages.inspector.manual },
-          ]}
-          disabled={disabled}
-          onChange={(next) => update({ manual: next === "manual" })}
-          testId="inspector-transition-manual"
-        />
-        <CheckboxField
-          label={messages.inspector.disabled}
-          checked={transition.disabled}
-          disabled={disabled}
-          onChange={(next) => update({ disabled: next })}
-          testId="inspector-transition-disabled"
-        />
-
-        <AnchorSelect
-          label={messages.inspector.sourceAnchor}
-          value={anchors?.source}
-          disabled={disabled}
-          messages={messages}
-          onChange={(next) => setAnchor("source", next)}
-          testId="inspector-transition-source-anchor"
-        />
-        <AnchorSelect
-          label={messages.inspector.targetAnchor}
-          value={anchors?.target}
-          disabled={disabled}
-          messages={messages}
-          onChange={(next) => setAnchor("target", next)}
-          testId="inspector-transition-target-anchor"
-        />
+        <div style={twoColStyle}>
+          <AnchorSelect
+            label={messages.inspector.sourceAnchor}
+            value={anchors?.source}
+            disabled={disabled}
+            messages={messages}
+            onChange={(next) => setAnchor("source", next)}
+            testId="inspector-transition-source-anchor"
+          />
+          <AnchorSelect
+            label={messages.inspector.targetAnchor}
+            value={anchors?.target}
+            disabled={disabled}
+            messages={messages}
+            onChange={(next) => setAnchor("target", next)}
+            testId="inspector-transition-target-anchor"
+          />
+        </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           <div style={{ display: "flex", gap: 6 }}>
@@ -362,7 +367,7 @@ export function TransitionForm({
         </label>
 
         {transition.schedule !== undefined && (
-          <>
+          <div style={twoColStyle}>
             <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: colors.textSecondary }}>
               <span style={{ fontWeight: 500 }}>Delay (ms)</span>
               <input
@@ -394,7 +399,7 @@ export function TransitionForm({
                 }}
               />
             </label>
-          </>
+          </div>
         )}
 
         <p
@@ -585,6 +590,15 @@ const transitionFormStyle = {
   display: "flex",
   flexDirection: "column" as const,
   gap: 16,
+};
+
+// Two-up grid for short controls. auto-fit collapses to one column when the
+// inspector is narrow (docked rail) or a pair renders only one field.
+const twoColStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+  gap: 8,
+  alignItems: "end" as const,
 };
 
 const transitionSectionStyle = {
