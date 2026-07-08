@@ -72,7 +72,7 @@ function renderInspector(doc: WorkflowEditorDocument, selection: Selection) {
 afterEach(() => cleanup());
 
 describe("automated transition ordering — inspector surface", () => {
-  it("selecting the offender shows null-criterion-not-last; selecting the dead transition shows unreachable-automated-transition", () => {
+  it("shows one null-criterion-not-last warning on the offender; the dead transition carries no ordering issue", () => {
     const doc = fixture();
     const goUuid = idFor(doc.meta, {
       kind: "transition",
@@ -91,26 +91,26 @@ describe("automated transition ordering — inspector surface", () => {
     expect(goUuid).toBeTruthy();
     expect(fallbackUuid).toBeTruthy();
 
-    // Sanity: validateAll produces both codes with the expected targetIds.
+    // The per-victim `unreachable-automated-transition` code is collapsed into
+    // the single offender warning, which targets the always-fires transition.
     const docIssues = validateAll(doc);
-    const offender = docIssues.find((i) => i.code === "null-criterion-not-last");
-    const dead = docIssues.find((i) => i.code === "unreachable-automated-transition");
-    expect(offender?.targetId).toBe(goUuid);
-    expect(dead?.targetId).toBe(fallbackUuid);
+    const ordering = docIssues.filter((i) => i.code === "null-criterion-not-last");
+    expect(ordering).toHaveLength(1);
+    expect(ordering[0]?.targetId).toBe(goUuid);
+    expect(docIssues.map((i) => i.code)).not.toContain("unreachable-automated-transition");
 
     const offenderView = renderInspector(doc, {
       kind: "transition",
       transitionUuid: goUuid!,
     });
     expect(offenderView.queryByText("null-criterion-not-last")).toBeTruthy();
-    expect(offenderView.queryByText("unreachable-automated-transition")).toBeNull();
     offenderView.unmount();
 
     const deadView = renderInspector(doc, {
       kind: "transition",
       transitionUuid: fallbackUuid!,
     });
-    expect(deadView.queryByText("unreachable-automated-transition")).toBeTruthy();
     expect(deadView.queryByText("null-criterion-not-last")).toBeNull();
+    expect(deadView.queryByText("unreachable-automated-transition")).toBeNull();
   });
 });

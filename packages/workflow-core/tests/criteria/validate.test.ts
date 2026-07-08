@@ -88,54 +88,37 @@ describe("criterion semantic rules", () => {
     expect(issue?.detail?.["reason"]).toBe("recursive-descent");
   });
 
-  test("simple MATCHES_PATTERN unanchored → matches-pattern-unanchored warning", () => {
+  test("simple MATCHES_PATTERN unanchored → no longer flagged (rule removed)", () => {
     const session = sessionWithTransitionCriterion({
       type: "simple",
       jsonPath: "$.s",
       operation: "MATCHES_PATTERN",
       value: "foo",
     });
-    expect(codes(session)).toContain("matches-pattern-unanchored");
-  });
-
-  test("simple MATCHES_PATTERN anchored → no warning", () => {
-    const session = sessionWithTransitionCriterion({
-      type: "simple",
-      jsonPath: "$.s",
-      operation: "MATCHES_PATTERN",
-      value: "^foo$",
-    });
+    // Anchoring is a valid, common choice — not the editor's call to warn about.
     expect(codes(session)).not.toContain("matches-pattern-unanchored");
   });
 
-  test("simple LIKE with wildcard chars → like-wildcard-warning", () => {
+  test("simple LIKE with wildcard chars → no longer flagged (rule removed)", () => {
     const session = sessionWithTransitionCriterion({
       type: "simple",
       jsonPath: "$.s",
       operation: "LIKE",
       value: "foo%",
     });
-    expect(codes(session)).toContain("like-wildcard-warning");
-  });
-
-  test("simple LIKE without wildcard chars → no warning", () => {
-    const session = sessionWithTransitionCriterion({
-      type: "simple",
-      jsonPath: "$.s",
-      operation: "LIKE",
-      value: "foo",
-    });
     expect(codes(session)).not.toContain("like-wildcard-warning");
   });
 
-  test("simple with $._meta path → lifecycle-path-in-simple warning", () => {
+  test("simple with $._meta path → lifecycle-path-in-simple info", () => {
     const session = sessionWithTransitionCriterion({
       type: "simple",
       jsonPath: "$._meta.state",
       operation: "EQUALS",
       value: "APPROVED",
     });
-    expect(codes(session)).toContain("lifecycle-path-in-simple");
+    const issue = validateSemantics(session).find((i) => i.code === "lifecycle-path-in-simple");
+    expect(issue).toBeDefined();
+    expect(issue?.severity).toBe("info");
   });
 
   test("group NOT → unsupported-group-operator warning, no errors", () => {
