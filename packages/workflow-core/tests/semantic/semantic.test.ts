@@ -157,7 +157,7 @@ describe("semantic validation", () => {
     expect(codes(json)).toContain("crossover-without-async-result");
   });
 
-  test("all-transitions-manual", () => {
+  test("a state with only manual transitions is not flagged (rule removed)", () => {
     const json = {
       importMode: "MERGE",
       workflows: [
@@ -179,7 +179,8 @@ describe("semantic validation", () => {
         },
       ],
     };
-    expect(codes(json)).toContain("all-transitions-manual");
+    // A manual-only state (a review gate or archive) is a normal design.
+    expect(codes(json)).not.toContain("all-transitions-manual");
   });
 });
 
