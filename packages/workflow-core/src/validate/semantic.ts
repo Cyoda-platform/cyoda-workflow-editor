@@ -585,6 +585,18 @@ function annotationsSizeIssues(
         });
       }
     }
+    if (wf.criterionAnnotations !== undefined) {
+      const bytes = annotationBytes(wf.criterionAnnotations);
+      if (bytes > max) {
+        issues.push({
+          severity: "error",
+          code: "annotations-too-large",
+          message: `Criterion annotations on workflow "${wf.name}" are ${bytes} bytes, over the ${max}-byte limit.`,
+          ...idFor(doc, wf.name, "workflow"),
+          detail: { bytes, max },
+        });
+      }
+    }
     for (const [stateCode, state] of Object.entries(wf.states)) {
       if (state.annotations !== undefined) {
         const bytes = annotationBytes(state.annotations);
@@ -599,16 +611,42 @@ function annotationsSizeIssues(
         }
       }
       state.transitions.forEach((t, index) => {
-        if (t.annotations === undefined) return;
-        const bytes = annotationBytes(t.annotations);
-        if (bytes > max) {
-          issues.push({
-            severity: "error",
-            code: "annotations-too-large",
-            message: `Annotations on transition "${t.name}" (state "${stateCode}", workflow "${wf.name}") are ${bytes} bytes, over the ${max}-byte limit.`,
-            ...transitionTargetId(doc, wf.name, stateCode, index),
-            detail: { bytes, max },
-          });
+        if (t.annotations !== undefined) {
+          const bytes = annotationBytes(t.annotations);
+          if (bytes > max) {
+            issues.push({
+              severity: "error",
+              code: "annotations-too-large",
+              message: `Annotations on transition "${t.name}" (state "${stateCode}", workflow "${wf.name}") are ${bytes} bytes, over the ${max}-byte limit.`,
+              ...transitionTargetId(doc, wf.name, stateCode, index),
+              detail: { bytes, max },
+            });
+          }
+        }
+        if (t.criterionAnnotations !== undefined) {
+          const bytes = annotationBytes(t.criterionAnnotations);
+          if (bytes > max) {
+            issues.push({
+              severity: "error",
+              code: "annotations-too-large",
+              message: `Criterion annotations on transition "${t.name}" (state "${stateCode}", workflow "${wf.name}") are ${bytes} bytes, over the ${max}-byte limit.`,
+              ...transitionTargetId(doc, wf.name, stateCode, index),
+              detail: { bytes, max },
+            });
+          }
+        }
+        for (const processor of t.processors ?? []) {
+          if (processor.annotations === undefined) continue;
+          const bytes = annotationBytes(processor.annotations);
+          if (bytes > max) {
+            issues.push({
+              severity: "error",
+              code: "annotations-too-large",
+              message: `Annotations on processor "${processor.name}" (transition "${t.name}", state "${stateCode}", workflow "${wf.name}") are ${bytes} bytes, over the ${max}-byte limit.`,
+              ...transitionTargetId(doc, wf.name, stateCode, index),
+              detail: { bytes, max },
+            });
+          }
         }
       });
     }
