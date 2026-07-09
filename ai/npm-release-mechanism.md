@@ -381,7 +381,7 @@ Permanent staging branch (standard integration target)
 This repo uses a permanent, long-lived `staging` branch as the standard
 integration target. It refines the policy above:
 
-* All feature/fix PRs and all Dependabot PRs target `staging`, not `main`.
+* All feature/fix PRs and all Renovate dependency PRs target `staging`, not `main`.
 * `staging` runs CI and release preflight on every push and PR, but never
   publishes to npm and never runs `changeset version`. It only accumulates
   `.changeset/*.md` entries.
@@ -390,8 +390,9 @@ integration target. It refines the policy above:
 * On `main`, the Changesets action opens/updates the "Version Packages" PR;
   merging it publishes the changed public packages to `latest`. `main` remains
   the only publisher.
-* `dependabot.yml` carries `target-branch: "staging"`. Note Dependabot reads this
-  file only from the default branch (`main`).
+* Dependency updates are handled by **Renovate**, not Dependabot (which mangled
+  the pnpm `catalog:` lockfile specifiers and could not `--frozen-lockfile`). See
+  the "Dependency updates (Renovate)" section below.
 * `release.yml`'s `workflow_dispatch` runs the Changesets action against `main`
   only — it is a safe manual fallback, never an arbitrary-branch publish.
 * Version-pinned `release/*` branches remain supported for occasional ad-hoc
@@ -439,3 +440,58 @@ with the changesets already consumed, which would otherwise trip
 
 If the app secrets are absent, `release.yml` fails at the token step — so the
 App must be created and its secrets added **before** this change reaches `main`.
+
+⸻
+
+Dependency updates (Renovate)
+
+Dependency updates are handled by **self-hosted Renovate**, not Dependabot.
+
+**Why not Dependabot.** This workspace pins every dependency through the pnpm
+`catalog:` protocol (`pnpm-workspace.yaml`). Dependabot's pnpm support rewrites a
+catalog dependency's lockfile importer specifier from `specifier: 'catalog:'` to a
+pinned version (observed on `vitest`, which is both a direct dep and carries
+peer-version suffixes). The manifest still says `catalog:`, so every downstream
+`pnpm install --frozen-lockfile` fails with `ERR_PNPM_OUTDATED_LOCKFILE` and CI
+dies before it does anything — a recurring, manual-fix "noise generator."
+
+**How Renovate is wired** (`.github/renovate.json` + `.github/workflows/renovate.yml`):
+
+* Renovate understands `catalog:` natively — it edits the catalog in
+  `pnpm-workspace.yaml` and regenerates a valid lockfile, so the corruption above
+  cannot happen.
+* It runs **self-hosted** on a weekly schedule (plus `workflow_dispatch`) via the
+  same `cyoda-go-release-bot` App token (`RELEASE_APP_*`) — no second GitHub App.
+  App-authored PRs trigger `validate`/`preflight` like human PRs (same recursion-
+  guard reasoning as the Version PR above).
+* Policy: **security only, recommend the rest.** `dependencyDashboardApproval:
+  true` means non-security updates open **no PR** — they are listed on the
+  "Dependency Dashboard" issue and a PR is opened only when you tick its box.
+  `vulnerabilityAlerts` overrides that (`dependencyDashboardApproval: false`,
+  `minimumReleaseAge: null`, `prCreation: immediate`) so vulnerability fixes land
+  as PRs right away. `osvVulnerabilityAlerts: true` adds OSV-based detection that
+  does not depend on the App having GitHub-alert read access.
+* `baseBranches: ["staging"]` — dependency PRs target `staging`, same as before.
+* `minimumReleaseAge: "14 days"` mirrors the `minimumReleaseAge: 20160` supply-
+  chain cooldown in `pnpm-workspace.yaml`.
+* Renovate also manages the `github-actions` ecosystem (via `config:recommended`),
+  which is why `dependabot.yml` was removed entirely rather than trimmed.
+
+**App permissions Renovate needs on `cyoda-go-release-bot`** (beyond the Contents
++ Pull requests it already has for releases):
+
+* **Issues: read & write** — to create/update the Dependency Dashboard issue.
+* **Workflows: write** — to update `.github/workflows/*` when an Actions update is
+  approved (GitHub App tokens cannot modify workflow files without it).
+
+If those are missing, the first Renovate run logs an error creating the dashboard
+issue / pushing workflow changes; add them in the App settings and re-run.
+
+**Post-cutover step (do only after the first Renovate run succeeds):** disable
+GitHub's native Dependabot **security updates** so security fixes don't come from
+both bots (the Dependabot ones would re-introduce the catalog corruption):
+
+    gh api -X DELETE repos/Cyoda/cyoda-workflow-editor/automated-security-fixes
+
+Leave **Dependabot _alerts_** (the advisory scanner, `repos/.../vulnerability-alerts`)
+**enabled** — Renovate reads it. Only the automatic _fix PRs_ are being turned off.
