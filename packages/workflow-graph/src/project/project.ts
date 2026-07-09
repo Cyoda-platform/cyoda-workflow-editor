@@ -10,7 +10,7 @@ import type {
   StateNode,
   TransitionEdge,
 } from "../types.js";
-import { computeCategory, computeRole } from "./roles.js";
+import { computeRole } from "./roles.js";
 import { computeLoopbackSet } from "./loopback.js";
 import { summarizeTransition } from "./summary.js";
 
@@ -46,7 +46,6 @@ export function projectToGraph(
         stateCode,
         role: computeRole(wf, stateCode, hasOutgoing),
         hasDisabledOutgoing: state.transitions.some((t) => t.disabled),
-        category: computeCategory(wf, stateCode),
       } satisfies StateNode);
     }
 

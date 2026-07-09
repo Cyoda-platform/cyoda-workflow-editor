@@ -201,3 +201,42 @@ single MAJOR.MINOR-keyed dialect can carry the new field safely).
   (65536 vs 64000, `>` vs `>=`); whether the server preserves annotation key order
   on reload (`json.Compact` preserves; map re-marshal sorts); whether an empty
   `{}` is round-tripped or dropped.
+
+## v0.8.2 (dialect `"0.8"`)
+
+The `"0.8"` dialect is extended **in place** to target cyoda-go **0.8.2**
+(schema tag `1.1` → `1.2`, additive/dual-shape — see issue #384). No new
+dialect module, no `SUPPORTED_CYODA_VERSIONS`/`LATEST_CYODA_VERSION` change,
+and no `version` tag restamp: `"0.8"` simply carries two more optional fields.
+
+- **`processor.annotations` added.** Same `Annotations` shape/constraints as
+  the existing workflow/state/transition `annotations` (opaque, client-owned,
+  object-only JSON) — now also embeddable on an individual
+  `ExternalizedProcessor` (`src/types/processor.ts`). Lets the editor attach a
+  display name / description to a single processor rather than only to its
+  containing transition.
+- **`criterionAnnotations` added on workflow and transition.** A sibling field
+  to `criterion` (`src/types/workflow.ts`), *not* nested inside the criterion
+  tree itself — it annotates "the guard attached here" without requiring the
+  criterion shape to carry editor metadata. Present on both `Workflow` (guards
+  the workflow's own entry) and `Transition` (guards that transition).
+- **Parse:** `normalizeOperatorAlias` already skips the `annotations` /
+  `criterionAnnotations` subtrees (added in the canonical-model change, task 1
+  of this feature) so opaque client JSON under either key is never rewritten
+  or rejected for carrying both `operatorType` and `operation`.
+- **Serialize:** `outputWorkflow`/`outputTransition` emit `criterionAnnotations`
+  immediately after `criterion` under the existing `OutputOptions.annotations`
+  flag; `outputProcessor`/`outputExternalizedProcessor` now take that same
+  `options` parameter and emit `annotations` on the processor when present.
+  The `"0.8"` dialect already passes `{ schedule: true, annotations: true }`,
+  so all three fields ride the same flag as the v0.8.1 `annotations` field —
+  no new `OutputOptions` key was needed. The `"0.7"` dialect passes no
+  `annotations` option and continues to omit all three.
+- **Allowlist:** `criterionAnnotations` added to `WORKFLOW_FIELDS` and
+  `TRANSITION_FIELDS` (immediately after `criterion`, matching emission order);
+  `annotations` added to `PROCESSOR_FIELDS` (before `config`). v0.8.0's
+  `DisallowUnknownFields` import handler would otherwise reject either key.
+- **`omitempty`, byte-identical for non-users.** All three fields are optional
+  and only emitted `if options?.annotations && value !== undefined`; a workflow
+  that sets none of them serializes to the exact same 0.8 wire bytes as before
+  this change.

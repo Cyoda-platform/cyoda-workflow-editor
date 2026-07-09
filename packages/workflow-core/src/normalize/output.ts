@@ -37,6 +37,9 @@ export function outputWorkflow(
   out["active"] = w.active;
   if (options?.annotations && w.annotations !== undefined) out["annotations"] = w.annotations;
   if (w.criterion !== undefined) out["criterion"] = outputCriterion(w.criterion);
+  if (options?.annotations && w.criterionAnnotations !== undefined) {
+    out["criterionAnnotations"] = w.criterionAnnotations;
+  }
   out["states"] = outputStates(w.states, options);
   return out;
 }
@@ -74,8 +77,11 @@ export function outputTransition(
   if (options?.annotations && t.annotations !== undefined) out["annotations"] = t.annotations;
   out["disabled"] = t.disabled;
   if (t.criterion !== undefined) out["criterion"] = outputCriterion(t.criterion);
+  if (options?.annotations && t.criterionAnnotations !== undefined) {
+    out["criterionAnnotations"] = t.criterionAnnotations;
+  }
   if (t.processors !== undefined && t.processors.length > 0) {
-    out["processors"] = t.processors.map(outputProcessor);
+    out["processors"] = t.processors.map((p) => outputProcessor(p, options));
   }
   if (options?.schedule && t.schedule !== undefined) {
     out["schedule"] = outputSchedule(t.schedule);
@@ -146,12 +152,18 @@ export function outputCriterion(c: Criterion): Record<string, unknown> {
   }
 }
 
-export function outputProcessor(p: Processor): Record<string, unknown> {
+export function outputProcessor(
+  p: Processor,
+  options?: OutputOptions,
+): Record<string, unknown> {
   // `externalized` is the only processor type since the v0.8 major bump.
-  return outputExternalizedProcessor(p);
+  return outputExternalizedProcessor(p, options);
 }
 
-function outputExternalizedProcessor(p: ExternalizedProcessor): Record<string, unknown> {
+function outputExternalizedProcessor(
+  p: ExternalizedProcessor,
+  options?: OutputOptions,
+): Record<string, unknown> {
   const out: Record<string, unknown> = {
     type: "externalized",
     name: p.name,
@@ -160,6 +172,7 @@ function outputExternalizedProcessor(p: ExternalizedProcessor): Record<string, u
   if ("startNewTxOnDispatch" in p && p.startNewTxOnDispatch !== undefined) {
     out["startNewTxOnDispatch"] = p.startNewTxOnDispatch;
   }
+  if (options?.annotations && p.annotations !== undefined) out["annotations"] = p.annotations;
   if (p.config !== undefined) {
     const cfg = outputExternalizedConfig(p.config);
     if (Object.keys(cfg).length > 0) out["config"] = cfg;

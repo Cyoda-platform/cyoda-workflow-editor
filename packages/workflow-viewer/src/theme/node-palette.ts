@@ -3,8 +3,10 @@ import { workflowPalette, type RolePaletteEntry, type TerminalPaletteEntry } fro
 
 /**
  * Select the palette entry for a state node.
- * initial-terminal prefers terminal styling (with initial accent applied
- * separately by the renderer — e.g. a secondary border ring).
+ *
+ * Only the spec role matters: initial (green), terminal (red), and every other
+ * state (blue). initial-terminal prefers terminal styling (with initial accent
+ * applied separately by the renderer — e.g. a secondary border ring).
  */
 export function paletteFor(
   node: StateNode,
@@ -12,7 +14,5 @@ export function paletteFor(
   const p = workflowPalette.node;
   if (node.role === "terminal" || node.role === "initial-terminal") return p.terminal;
   if (node.role === "initial") return p.initial;
-  if (node.category === "MANUAL_REVIEW") return p.manualReview;
-  if (node.category === "PROCESSING_STATE") return p.processing;
   return p.default;
 }

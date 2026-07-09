@@ -35,8 +35,6 @@ export function HelpModal({ onCancel }: HelpModalProps) {
           <Section title={h.statesTitle}>
             <ColorRow fill={node.initial.fill} border={node.initial.border} label={h.stateInitial} />
             <ColorRow fill={node.default.fill} border={node.default.border} label={h.stateDefault} />
-            <ColorRow fill={node.processing.fill} border={node.processing.border} label={h.stateProcessing} />
-            <ColorRow fill={node.manualReview.fill} border={node.manualReview.border} label={h.stateManualReview} />
             <ColorRow fill={node.terminal.fill} border={node.terminal.border} label={h.stateTerminal} />
             <ColorRow fill="#FFFFFF" border={colors.danger} label={h.stateError} />
             <ColorRow fill="#FFFFFF" border={colors.warning} label={h.stateWarning} />

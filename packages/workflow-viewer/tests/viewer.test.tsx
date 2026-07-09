@@ -381,7 +381,6 @@ describe("WorkflowViewer", () => {
       stateCode: id,
       role,
       hasDisabledOutgoing: false,
-      category: "STATE" as const,
     });
 
     const transitionEdge = (id: string, sourceId: string, targetId: string) => ({

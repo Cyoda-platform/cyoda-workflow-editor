@@ -1,4 +1,5 @@
 import type { Criterion, Processor, Transition } from "@cyoda/workflow-core";
+import { AnnotationLines } from "@cyoda/workflow-viewer";
 import { typography, workflowPalette } from "@cyoda/workflow-viewer/theme";
 
 interface Props {
@@ -31,11 +32,13 @@ export function TransitionTooltip({ transition, x, y }: Props) {
       <div style={{ fontWeight: 700, fontSize: 11, letterSpacing: "0.06em", marginBottom: 8, color: workflowPalette.neutrals.slate500, textTransform: "uppercase" }}>
         {transition.name}
       </div>
+      <AnnotationLines annotations={transition.annotations} />
 
-      {transition.criterion && (
+      {(transition.criterion || transition.criterionAnnotations) && (
         <section style={{ marginBottom: transition.processors?.length ? 8 : 0 }}>
           <Label>Criterion</Label>
-          <CriterionView criterion={transition.criterion} />
+          <AnnotationLines annotations={transition.criterionAnnotations} />
+          {transition.criterion && <CriterionView criterion={transition.criterion} />}
         </section>
       )}
 
@@ -46,7 +49,7 @@ export function TransitionTooltip({ transition, x, y }: Props) {
         </section>
       )}
 
-      {!transition.criterion && !transition.processors?.length && (
+      {!transition.criterion && !transition.criterionAnnotations && !transition.processors?.length && (
         <div style={{ color: workflowPalette.neutrals.slate500, fontStyle: "italic" }}>No criterion or processors</div>
       )}
     </div>
@@ -107,10 +110,13 @@ function CriterionView({ criterion, depth = 0 }: { criterion: Criterion; depth?:
 function ProcessorView({ processor }: { processor: Processor }) {
   const mode = processor.executionMode ?? "ASYNC_NEW_TX";
   return (
-    <div style={{ marginBottom: 4, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-      <code style={{ fontSize: 11, fontWeight: 600 }}>{processor.name}</code>
-      {mode !== "ASYNC_NEW_TX" && <Chip color="blue">{mode.replace(/_/g, " ")}</Chip>}
-      {processor.config?.calculationNodesTags && <Chip color="slate">{processor.config.calculationNodesTags}</Chip>}
+    <div style={{ marginBottom: 4 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+        <code style={{ fontSize: 11, fontWeight: 600 }}>{processor.name}</code>
+        {mode !== "ASYNC_NEW_TX" && <Chip color="blue">{mode.replace(/_/g, " ")}</Chip>}
+        {processor.config?.calculationNodesTags && <Chip color="slate">{processor.config.calculationNodesTags}</Chip>}
+      </div>
+      <AnnotationLines annotations={processor.annotations} />
     </div>
   );
 }

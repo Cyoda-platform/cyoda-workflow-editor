@@ -149,7 +149,7 @@ function validateWorkflow(
 
     // duplicate transition names within a state
     const transitionSeen = new Map<string, number>();
-    for (const t of state.transitions) {
+    for (const [index, t] of state.transitions.entries()) {
       transitionSeen.set(t.name, (transitionSeen.get(t.name) ?? 0) + 1);
       if (!isValidName(t.name)) {
         issues.push({
@@ -164,6 +164,7 @@ function validateWorkflow(
           severity: "error",
           code: "unknown-transition-target",
           message: `Transition "${t.name}" on "${stateCode}" targets unknown state "${t.next}".`,
+          ...transitionTargetId(doc, wf.name, stateCode, index),
         });
       }
 
@@ -189,6 +190,7 @@ function validateWorkflow(
               severity: "warning",
               code: "start-new-tx-without-commit-before-dispatch",
               message: `Processor "${p.name}" sets startNewTxOnDispatch but executionMode is not COMMIT_BEFORE_DISPATCH.`,
+              ...transitionTargetId(doc, wf.name, stateCode, index),
             });
           }
           if (p.type === "externalized" && p.config) {
@@ -210,14 +212,16 @@ function validateWorkflow(
               severity: "error",
               code: "duplicate-processor-name",
               message: `Duplicate processor name "${name}" on transition "${t.name}".`,
+              ...transitionTargetId(doc, wf.name, stateCode, index),
             });
           }
         }
         if (t.processors.length > 5) {
           issues.push({
-            severity: "warning",
+            severity: "info",
             code: "processor-overload",
             message: `Transition "${t.name}" has ${t.processors.length} processors (>5).`,
+            ...transitionTargetId(doc, wf.name, stateCode, index),
           });
         }
       }
@@ -225,9 +229,10 @@ function validateWorkflow(
       // disabled-transition-on-active-workflow
       if (t.disabled && wf.active) {
         issues.push({
-          severity: "warning",
+          severity: "info",
           code: "disabled-transition-on-active-workflow",
           message: `Transition "${t.name}" is disabled in active workflow "${wf.name}".`,
+          ...transitionTargetId(doc, wf.name, stateCode, index),
         });
       }
     }
@@ -237,6 +242,7 @@ function validateWorkflow(
           severity: "error",
           code: "duplicate-transition-name",
           message: `Duplicate transition name "${name}" on state "${stateCode}".`,
+          ...stateTargetId(doc, wf.name, stateCode),
         });
       }
     }
@@ -244,21 +250,10 @@ function validateWorkflow(
     // excessive-fan-out
     if (state.transitions.length > 8) {
       issues.push({
-        severity: "warning",
+        severity: "info",
         code: "excessive-fan-out",
         message: `State "${stateCode}" has ${state.transitions.length} outgoing transitions (>8).`,
-      });
-    }
-
-    // all-transitions-manual
-    if (
-      state.transitions.length > 0 &&
-      state.transitions.every((t) => t.manual === true)
-    ) {
-      issues.push({
-        severity: "warning",
-        code: "all-transitions-manual",
-        message: `State "${stateCode}" has only manual transitions.`,
+        ...stateTargetId(doc, wf.name, stateCode),
       });
     }
 
@@ -280,6 +275,7 @@ function validateWorkflow(
         severity: "warning",
         code: "unreachable-state",
         message: `State "${stateCode}" is unreachable from the initial state.`,
+        ...stateTargetId(doc, wf.name, stateCode),
       });
     }
   }
@@ -291,25 +287,6 @@ function validateWorkflow(
       code: "workflow-inactive",
       message: `Workflow "${wf.name}" is inactive.`,
     });
-  }
-
-  // sync-on-likely-bottleneck-transition
-  const reachableAuto = reachableAutoStates(wf);
-  for (const [stateCode, state] of Object.entries(wf.states)) {
-    if (!reachableAuto.has(stateCode)) continue;
-    for (const t of state.transitions) {
-      if (t.manual) continue;
-      if (!t.processors) continue;
-      for (const p of t.processors) {
-        if (p.type === "externalized" && p.executionMode === "SYNC") {
-          issues.push({
-            severity: "warning",
-            code: "sync-on-likely-bottleneck-transition",
-            message: `SYNC processor "${p.name}" on auto-reachable transition "${t.name}" may block the main path.`,
-          });
-        }
-      }
-    }
   }
 
   return issues;
@@ -335,7 +312,7 @@ function criterionRules(session: WorkflowSession): ValidationIssue[] {
         }
         if (!criterion.function.criterion) {
           issues.push({
-            severity: "warning",
+            severity: "info",
             code: "function-without-quick-exit",
             message: `Function criterion "${criterion.function.name}" has no local quick-exit criterion.`,
           });
@@ -405,7 +382,7 @@ function criterionRules(session: WorkflowSession): ValidationIssue[] {
           // a SimpleCondition on `$._meta.*` resolves to a literal data field and
           // will never match.
           issues.push({
-            severity: "warning",
+            severity: "info",
             code: "lifecycle-path-in-simple",
             message: `Simple criterion path "${criterion.jsonPath}" looks like a lifecycle path; use a lifecycle criterion instead (at ${describe(where)}).`,
             detail: { jsonPath: criterion.jsonPath },
@@ -425,34 +402,6 @@ function criterionRules(session: WorkflowSession): ValidationIssue[] {
           }
         }
 
-        if (
-          criterion.operation === "LIKE" &&
-          typeof criterion.value === "string" &&
-          /[%_]/.test(criterion.value)
-        ) {
-          // Spec §3.1: LIKE has no escape mechanism; `%` and `_` are always
-          // wildcards.
-          issues.push({
-            severity: "warning",
-            code: "like-wildcard-warning",
-            message: `LIKE pattern contains "%" or "_" which are always wildcards (no escape mechanism) (at ${describe(where)}).`,
-          });
-        }
-
-        if (
-          criterion.operation === "MATCHES_PATTERN" &&
-          typeof criterion.value === "string" &&
-          criterion.value.length > 0 &&
-          !criterion.value.startsWith("^") &&
-          !criterion.value.endsWith("$")
-        ) {
-          // Spec §3.1: MATCHES_PATTERN has no implicit anchoring.
-          issues.push({
-            severity: "warning",
-            code: "matches-pattern-unanchored",
-            message: `MATCHES_PATTERN regex is unanchored; include "^"/"$" for whole-string match (at ${describe(where)}).`,
-          });
-        }
         break;
       }
     }
@@ -535,27 +484,6 @@ function reachableStates(wf: Workflow): Set<string> {
     const state = wf.states[cur];
     if (!state) continue;
     for (const t of state.transitions) {
-      if (!visited.has(t.next) && t.next in wf.states) {
-        visited.add(t.next);
-        queue.push(t.next);
-      }
-    }
-  }
-  return visited;
-}
-
-function reachableAutoStates(wf: Workflow): Set<string> {
-  // States reachable from initial without traversing a manual gate.
-  const visited = new Set<string>();
-  if (!(wf.initialState in wf.states)) return visited;
-  const queue: string[] = [wf.initialState];
-  visited.add(wf.initialState);
-  while (queue.length) {
-    const cur = queue.shift()!;
-    const state = wf.states[cur];
-    if (!state) continue;
-    for (const t of state.transitions) {
-      if (t.manual) continue;
       if (!visited.has(t.next) && t.next in wf.states) {
         visited.add(t.next);
         queue.push(t.next);
@@ -657,6 +585,18 @@ function annotationsSizeIssues(
         });
       }
     }
+    if (wf.criterionAnnotations !== undefined) {
+      const bytes = annotationBytes(wf.criterionAnnotations);
+      if (bytes > max) {
+        issues.push({
+          severity: "error",
+          code: "annotations-too-large",
+          message: `Criterion annotations on workflow "${wf.name}" are ${bytes} bytes, over the ${max}-byte limit.`,
+          ...idFor(doc, wf.name, "workflow"),
+          detail: { bytes, max },
+        });
+      }
+    }
     for (const [stateCode, state] of Object.entries(wf.states)) {
       if (state.annotations !== undefined) {
         const bytes = annotationBytes(state.annotations);
@@ -671,16 +611,42 @@ function annotationsSizeIssues(
         }
       }
       state.transitions.forEach((t, index) => {
-        if (t.annotations === undefined) return;
-        const bytes = annotationBytes(t.annotations);
-        if (bytes > max) {
-          issues.push({
-            severity: "error",
-            code: "annotations-too-large",
-            message: `Annotations on transition "${t.name}" (state "${stateCode}", workflow "${wf.name}") are ${bytes} bytes, over the ${max}-byte limit.`,
-            ...transitionTargetId(doc, wf.name, stateCode, index),
-            detail: { bytes, max },
-          });
+        if (t.annotations !== undefined) {
+          const bytes = annotationBytes(t.annotations);
+          if (bytes > max) {
+            issues.push({
+              severity: "error",
+              code: "annotations-too-large",
+              message: `Annotations on transition "${t.name}" (state "${stateCode}", workflow "${wf.name}") are ${bytes} bytes, over the ${max}-byte limit.`,
+              ...transitionTargetId(doc, wf.name, stateCode, index),
+              detail: { bytes, max },
+            });
+          }
+        }
+        if (t.criterionAnnotations !== undefined) {
+          const bytes = annotationBytes(t.criterionAnnotations);
+          if (bytes > max) {
+            issues.push({
+              severity: "error",
+              code: "annotations-too-large",
+              message: `Criterion annotations on transition "${t.name}" (state "${stateCode}", workflow "${wf.name}") are ${bytes} bytes, over the ${max}-byte limit.`,
+              ...transitionTargetId(doc, wf.name, stateCode, index),
+              detail: { bytes, max },
+            });
+          }
+        }
+        for (const processor of t.processors ?? []) {
+          if (processor.annotations === undefined) continue;
+          const bytes = annotationBytes(processor.annotations);
+          if (bytes > max) {
+            issues.push({
+              severity: "error",
+              code: "annotations-too-large",
+              message: `Annotations on processor "${processor.name}" (transition "${t.name}", state "${stateCode}", workflow "${wf.name}") are ${bytes} bytes, over the ${max}-byte limit.`,
+              ...transitionTargetId(doc, wf.name, stateCode, index),
+              detail: { bytes, max },
+            });
+          }
         }
       });
     }
@@ -706,33 +672,21 @@ function automatedOrderingRules(
       if (nullIdx === -1 || nullIdx === automated.length - 1) continue;
 
       const nullEntry = automated[nullIdx]!;
+      const deadNames = automated.slice(nullIdx + 1).map((entry) => entry.t.name);
       issues.push({
         severity: "warning",
         code: "null-criterion-not-last",
-        message: `Transition "${nullEntry.t.name}" on state "${stateCode}" is automated and has no criterion, so it always fires; later automated transitions on this state are unreachable.`,
+        message: `Transition "${nullEntry.t.name}" on state "${stateCode}" is automated and has no criterion, so it always fires; later automated transitions on this state are unreachable${
+          deadNames.length > 0 ? ` (${deadNames.map((n) => `"${n}"`).join(", ")})` : ""
+        }.`,
         ...transitionTargetId(doc, wf.name, stateCode, nullEntry.index),
         detail: {
           workflow: wf.name,
           state: stateCode,
           transitionName: nullEntry.t.name,
+          unreachable: deadNames,
         },
       });
-
-      for (let j = nullIdx + 1; j < automated.length; j++) {
-        const dead = automated[j]!;
-        issues.push({
-          severity: "warning",
-          code: "unreachable-automated-transition",
-          message: `Transition "${dead.t.name}" on state "${stateCode}" is unreachable: an earlier automated transition ("${nullEntry.t.name}") has no criterion and will always fire first.`,
-          ...transitionTargetId(doc, wf.name, stateCode, dead.index),
-          detail: {
-            workflow: wf.name,
-            state: stateCode,
-            transitionName: dead.t.name,
-            blockedBy: nullEntry.t.name,
-          },
-        });
-      }
     }
   }
   return issues;

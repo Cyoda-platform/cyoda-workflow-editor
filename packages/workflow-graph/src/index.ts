@@ -1,6 +1,6 @@
 export { projectToGraph } from "./project/project.js";
 export type { ProjectOptions } from "./project/project.js";
-export { computeRole, computeCategory } from "./project/roles.js";
+export { computeRole } from "./project/roles.js";
 export { computeLoopbackSet } from "./project/loopback.js";
 export {
   summarizeTransition,

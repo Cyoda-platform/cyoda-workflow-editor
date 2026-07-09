@@ -20,8 +20,6 @@ export const defaultMessages = {
     statesTitle: "States",
     stateInitial: "Initial — workflow entry point",
     stateDefault: "Regular state",
-    stateProcessing: "Processing — automated work",
-    stateManualReview: "Manual review — needs a person",
     stateTerminal: "Terminal — workflow ends here",
     stateError: "Red border — validation error",
     stateWarning: "Amber border — validation warning",
@@ -177,6 +175,9 @@ export const defaultMessages = {
       "No criterion. This automated transition will fire as soon as the entity reaches this state.",
     noneAutomatedWarning:
       "Automated transitions without criteria should usually be last in the transition order.",
+    workflowCaption:
+      "Determines whether this workflow applies to an entity of its model — set one to disambiguate when several workflows target the same model.",
+    workflowNone: "No workflow criterion set.",
     cancel: "Cancel",
     applyModal: "Apply",
     revert: "Revert",

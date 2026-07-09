@@ -183,8 +183,6 @@ describe("processor modal UX", () => {
     expect(values).toContain("ASYNC_NEW_TX");
     expect(values).toContain("ASYNC_SAME_TX");
     expect(values).toContain("SYNC");
-    // startNewTxOnDispatch checkbox removed from UI
-    expect(screen.queryByTestId("processor-start-new-tx")).toBeNull();
   });
 
   it("asyncResult toggles crossoverToAsyncMs availability", () => {

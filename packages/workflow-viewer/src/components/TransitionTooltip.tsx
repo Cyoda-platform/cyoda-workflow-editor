@@ -1,11 +1,32 @@
 import { createPortal } from "react-dom";
-import type { Criterion, Processor, Transition } from "@cyoda/workflow-core";
+import type { Annotations, Criterion, Processor, Transition } from "@cyoda/workflow-core";
 import { typography, workflowPalette } from "../theme/tokens.js";
 
 interface Props {
   transition: Transition;
   x: number;
   y: number;
+}
+
+/** A well-known annotation key's value, only when it's a non-empty string. */
+export function readAnnotationText(
+  annotations: Annotations | undefined,
+  key: "displayName" | "description",
+): string | undefined {
+  const v = annotations?.[key];
+  return typeof v === "string" && v.trim().length > 0 ? v.trim() : undefined;
+}
+
+export function AnnotationLines({ annotations }: { annotations: Annotations | undefined }) {
+  const name = readAnnotationText(annotations, "displayName");
+  const desc = readAnnotationText(annotations, "description");
+  if (!name && !desc) return null;
+  return (
+    <>
+      {name && <div style={{ fontWeight: 600, fontSize: 12 }}>{name}</div>}
+      {desc && <div style={{ fontSize: 11, color: workflowPalette.neutrals.slate500 }}>{desc}</div>}
+    </>
+  );
 }
 
 export function TransitionTooltip({ transition, x, y }: Props) {
@@ -32,13 +53,15 @@ export function TransitionTooltip({ transition, x, y }: Props) {
       <div style={{ fontWeight: 700, fontSize: 11, letterSpacing: "0.06em", marginBottom: 8, color: workflowPalette.neutrals.slate500, textTransform: "uppercase" }}>
         {transition.name}
       </div>
+      <AnnotationLines annotations={transition.annotations} />
 
-      {transition.criterion && (
+      {(transition.criterion || transition.criterionAnnotations) && (
         <section style={{ marginBottom: transition.processors?.length ? 8 : 0 }}>
           <div style={{ fontWeight: 600, fontSize: 10, letterSpacing: "0.05em", color: workflowPalette.neutrals.slate500, textTransform: "uppercase", marginBottom: 4 }}>
             Criterion
           </div>
-          <CriterionView criterion={transition.criterion} />
+          <AnnotationLines annotations={transition.criterionAnnotations} />
+          {transition.criterion && <CriterionView criterion={transition.criterion} />}
         </section>
       )}
 
@@ -53,7 +76,7 @@ export function TransitionTooltip({ transition, x, y }: Props) {
         </section>
       )}
 
-      {!transition.criterion && !transition.processors?.length && (
+      {!transition.criterion && !transition.criterionAnnotations && !transition.processors?.length && (
         <div style={{ color: workflowPalette.neutrals.slate500, fontStyle: "italic" }}>No criterion or processors</div>
       )}
     </div>,
@@ -125,12 +148,15 @@ function CriterionView({ criterion, depth = 0 }: { criterion: Criterion; depth?:
 function ProcessorView({ processor }: { processor: Processor }) {
   const mode = processor.executionMode ?? "ASYNC_NEW_TX";
   return (
-    <div style={{ marginBottom: 4, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-      <code style={{ fontSize: 11, fontWeight: 600 }}>{processor.name}</code>
-      {mode !== "ASYNC_NEW_TX" && <Chip color="blue">{mode.replace(/_/g, " ")}</Chip>}
-      {processor.config?.calculationNodesTags && (
-        <Chip color="slate">{processor.config.calculationNodesTags}</Chip>
-      )}
+    <div style={{ marginBottom: 4 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+        <code style={{ fontSize: 11, fontWeight: 600 }}>{processor.name}</code>
+        {mode !== "ASYNC_NEW_TX" && <Chip color="blue">{mode.replace(/_/g, " ")}</Chip>}
+        {processor.config?.calculationNodesTags && (
+          <Chip color="slate">{processor.config.calculationNodesTags}</Chip>
+        )}
+      </div>
+      <AnnotationLines annotations={processor.annotations} />
     </div>
   );
 }

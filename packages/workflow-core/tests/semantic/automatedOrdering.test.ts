@@ -56,19 +56,17 @@ describe("automated transition ordering rules", () => {
     expect(codes).not.toContain("unreachable-automated-transition");
   });
 
-  test("null-criterion followed by another automated → both codes emitted", () => {
+  test("null-criterion followed by another automated → single offender warning lists the dead transitions", () => {
     const issues = validateSemantics(
       sessionWith([tr("go"), tr("fallback", { criterion: SIMPLE })]),
     );
-    const offender = issues.find((i) => i.code === "null-criterion-not-last");
-    const dead = issues.find((i) => i.code === "unreachable-automated-transition");
-    expect(offender).toBeDefined();
-    expect(offender?.severity).toBe("warning");
-    expect(offender?.detail?.["transitionName"]).toBe("go");
-    expect(dead).toBeDefined();
-    expect(dead?.severity).toBe("warning");
-    expect(dead?.detail?.["transitionName"]).toBe("fallback");
-    expect(dead?.detail?.["blockedBy"]).toBe("go");
+    const offenders = issues.filter((i) => i.code === "null-criterion-not-last");
+    expect(offenders).toHaveLength(1);
+    expect(offenders[0]?.severity).toBe("warning");
+    expect(offenders[0]?.detail?.["transitionName"]).toBe("go");
+    expect(offenders[0]?.detail?.["unreachable"]).toEqual(["fallback"]);
+    // The per-victim code is collapsed into the offender warning.
+    expect(issues.map((i) => i.code)).not.toContain("unreachable-automated-transition");
   });
 
   test("null-criterion followed only by manual transitions → no warning", () => {
@@ -87,7 +85,7 @@ describe("automated transition ordering rules", () => {
     expect(codes).not.toContain("unreachable-automated-transition");
   });
 
-  test("null-criterion in middle, later guarded automated still flagged unreachable", () => {
+  test("null-criterion in middle → offender warning names the later dead transition", () => {
     const issues = validateSemantics(
       sessionWith([
         tr("first", { criterion: SIMPLE }),
@@ -95,23 +93,22 @@ describe("automated transition ordering rules", () => {
         tr("last", { criterion: SIMPLE }),
       ]),
     );
-    const offender = issues.find((i) => i.code === "null-criterion-not-last");
-    expect(offender?.detail?.["transitionName"]).toBe("middle");
-    const dead = issues.filter((i) => i.code === "unreachable-automated-transition");
-    expect(dead.map((d) => d.detail?.["transitionName"])).toEqual(["last"]);
+    const offenders = issues.filter((i) => i.code === "null-criterion-not-last");
+    expect(offenders).toHaveLength(1);
+    expect(offenders[0]?.detail?.["transitionName"]).toBe("middle");
+    expect(offenders[0]?.detail?.["unreachable"]).toEqual(["last"]);
+    expect(issues.map((i) => i.code)).not.toContain("unreachable-automated-transition");
   });
 
-  test("two null-criterion automateds in a row → first offender, second unreachable", () => {
+  test("two null-criterion automateds in a row → one offender warning listing the rest", () => {
     const issues = validateSemantics(
       sessionWith([tr("alpha"), tr("beta")]),
     );
     const offenders = issues.filter((i) => i.code === "null-criterion-not-last");
-    const deads = issues.filter((i) => i.code === "unreachable-automated-transition");
     expect(offenders).toHaveLength(1);
     expect(offenders[0]?.detail?.["transitionName"]).toBe("alpha");
-    expect(deads).toHaveLength(1);
-    expect(deads[0]?.detail?.["transitionName"]).toBe("beta");
-    expect(deads[0]?.detail?.["blockedBy"]).toBe("alpha");
+    expect(offenders[0]?.detail?.["unreachable"]).toEqual(["beta"]);
+    expect(issues.map((i) => i.code)).not.toContain("unreachable-automated-transition");
   });
 
   test("all guarded automated transitions → no warnings emitted", () => {

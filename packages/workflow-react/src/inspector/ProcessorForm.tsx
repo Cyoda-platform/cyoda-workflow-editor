@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   NAME_REGEX,
+  type Annotations,
   type DomainPatch,
   type ExecutionMode,
   type ExternalizedProcessor,
@@ -11,6 +12,7 @@ import { useMessages } from "../i18n/context.js";
 import { colors, radii } from "../style/tokens.js";
 import { CustomSelectInput } from "./fields.js";
 import { ModalFrame } from "../modals/DeleteStateModal.js";
+import { AnnotationsField } from "./AnnotationsField.js";
 
 const EXECUTION_MODES: ExecutionMode[] = [
   "ASYNC_NEW_TX",
@@ -48,6 +50,7 @@ type ProcessorDraft = {
   context: string;
   asyncResult: boolean;
   crossoverToAsyncMs: string;
+  annotations?: Annotations;
 };
 
 function toDraft(processor?: Processor): ProcessorDraft {
@@ -69,6 +72,7 @@ function toDraft(processor?: Processor): ProcessorDraft {
       externalized?.config?.crossoverToAsyncMs !== undefined
         ? String(externalized.config.crossoverToAsyncMs)
         : "",
+    annotations: externalized?.annotations,
   };
 }
 
@@ -95,6 +99,7 @@ function toProcessor(draft: ProcessorDraft): Processor {
       ? { startNewTxOnDispatch: true }
       : {}),
     ...(Object.keys(config).length > 0 ? { config } : {}),
+    ...(draft.annotations !== undefined ? { annotations: draft.annotations } : {}),
   };
 }
 
@@ -193,10 +198,38 @@ export function ProcessorEditorModal({
             <CustomSelectInput
               value={draft.executionMode}
               options={EXECUTION_MODES.map((mode) => ({ value: mode, label: mode }))}
-              onChange={(next) => setDraft((current) => ({ ...current, executionMode: next as ExecutionMode }))}
+              onChange={(next) =>
+                setDraft((current) => ({
+                  ...current,
+                  executionMode: next as ExecutionMode,
+                  // startNewTxOnDispatch is only valid for COMMIT_BEFORE_DISPATCH.
+                  startNewTxOnDispatch:
+                    next === "COMMIT_BEFORE_DISPATCH" ? current.startNewTxOnDispatch : false,
+                }))
+              }
               testId="processor-execution-mode"
             />
           </FormField>
+
+          <label
+            style={
+              draft.executionMode === "COMMIT_BEFORE_DISPATCH"
+                ? checkboxRowStyle
+                : { ...checkboxRowStyle, opacity: 0.5 }
+            }
+            title="Only for COMMIT_BEFORE_DISPATCH: open a fresh transaction context for the dispatched call."
+          >
+            <input
+              type="checkbox"
+              checked={draft.startNewTxOnDispatch}
+              disabled={disabled || draft.executionMode !== "COMMIT_BEFORE_DISPATCH"}
+              onChange={(event) =>
+                setDraft((current) => ({ ...current, startNewTxOnDispatch: event.target.checked }))
+              }
+              data-testid="processor-start-new-tx"
+            />
+            <span>Start new transaction on dispatch</span>
+          </label>
 
           <label style={checkboxRowStyle}>
             <input
@@ -239,13 +272,29 @@ export function ProcessorEditorModal({
           </FormField>
 
           <FormField label="Retry policy">
+            <CustomSelectInput
+              value={draft.retryPolicy}
+              options={[
+                { value: "", label: "Default (FIXED)" },
+                { value: "NONE", label: "NONE" },
+                { value: "FIXED", label: "FIXED" },
+              ]}
+              onChange={(next) => setDraft((current) => ({ ...current, retryPolicy: next }))}
+              testId="processor-retry-policy"
+            />
+          </FormField>
+
+          <FormField label="Context">
             <input
               type="text"
-              value={draft.retryPolicy}
+              value={draft.context}
+              placeholder="passed verbatim as request parameters"
+              disabled={disabled}
               onChange={(event) =>
-                setDraft((current) => ({ ...current, retryPolicy: event.target.value }))
+                setDraft((current) => ({ ...current, context: event.target.value }))
               }
-              style={inputStyle}
+              data-testid="processor-context-input"
+              style={disabled ? disabledInputStyle : inputStyle}
             />
           </FormField>
 
@@ -280,6 +329,19 @@ export function ProcessorEditorModal({
               style={disabled ? disabledInputStyle : inputStyle}
             />
           </FormField>
+        </div>
+
+        <div
+          data-testid="processor-annotations"
+          style={{ display: "flex", flexDirection: "column", gap: 8, gridColumn: "1 / -1" }}
+        >
+          <AnnotationsField
+            value={draft.annotations}
+            disabled={disabled}
+            modelKey={`processor-${initialProcessor?.name ?? "new"}`}
+            onCommit={(a) => setDraft((c) => ({ ...c, annotations: a }))}
+            onRemove={() => setDraft((c) => ({ ...c, annotations: undefined }))}
+          />
         </div>
 
         {error && (
