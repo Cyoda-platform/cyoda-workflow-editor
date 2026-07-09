@@ -272,13 +272,15 @@ export function ProcessorEditorModal({
           </FormField>
 
           <FormField label="Retry policy">
-            <input
-              type="text"
+            <CustomSelectInput
               value={draft.retryPolicy}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, retryPolicy: event.target.value }))
-              }
-              style={inputStyle}
+              options={[
+                { value: "", label: "Default (FIXED)" },
+                { value: "NONE", label: "NONE" },
+                { value: "FIXED", label: "FIXED" },
+              ]}
+              onChange={(next) => setDraft((current) => ({ ...current, retryPolicy: next }))}
+              testId="processor-retry-policy"
             />
           </FormField>
 

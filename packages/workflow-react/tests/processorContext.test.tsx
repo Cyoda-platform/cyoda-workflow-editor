@@ -22,6 +22,28 @@ function renderModal(initial: Processor) {
   return { onApply };
 }
 
+describe("processor retry policy field", () => {
+  it("is a select limited to the valid values (Default / NONE / FIXED)", () => {
+    renderModal(base);
+    const select = screen.getByTestId("processor-retry-policy") as HTMLSelectElement;
+    expect(select.tagName.toLowerCase()).toBe("select");
+    expect(Array.from(select.options).map((o) => o.value)).toEqual(["", "NONE", "FIXED"]);
+  });
+
+  it("emits the chosen policy; the default (empty) omits it", () => {
+    const withNone = renderModal(base);
+    fireEvent.change(screen.getByTestId("processor-retry-policy"), { target: { value: "NONE" } });
+    fireEvent.click(screen.getByTestId("processor-modal-apply"));
+    expect(withNone.onApply.mock.calls[0]![0].config?.retryPolicy).toBe("NONE");
+
+    cleanup();
+    const withDefault = renderModal({ ...base, config: { retryPolicy: "FIXED" } });
+    fireEvent.change(screen.getByTestId("processor-retry-policy"), { target: { value: "" } });
+    fireEvent.click(screen.getByTestId("processor-modal-apply"));
+    expect(withDefault.onApply.mock.calls[0]![0].config?.retryPolicy).toBeUndefined();
+  });
+});
+
 describe("processor context field", () => {
   it("shows the existing context value and commits edits to config.context", () => {
     const { onApply } = renderModal({ ...base, config: { context: "channel=email" } });
