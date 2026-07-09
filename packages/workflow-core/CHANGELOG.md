@@ -1,5 +1,74 @@
 # @cyoda/workflow-core
 
+## 0.5.0
+
+### Minor Changes
+
+- bfd2c5a: Support cyoda-go 0.8.2 processor & criterion annotations, and surface them in the transition tooltip.
+
+  - **`@cyoda/workflow-core`**: add `annotations` to processors and `criterionAnnotations`
+    (sibling to `criterion`) on workflows and transitions; the 0.8 dialect emits them
+    (`omitempty`, so workflows that don't use them serialise byte-identically), extended
+    in place — `LATEST_CYODA_VERSION` stays `"0.8"`. `setAnnotations` gains
+    `workflowCriterion`/`transitionCriterion` targets; `annotations-too-large` covers the
+    new placements.
+  - **`@cyoda/workflow-viewer` / `@cyoda/workflow-react`**: the transition hover tooltip
+    shows the well-known `displayName`/`description` annotation keys for the transition,
+    its criterion, and each processor; the raw-JSON annotations editor is available for
+    processor annotations (modal) and criterion annotations.
+
+- 946e7ee: Triage the workflow validation ruleset: drop noisy heuristics, demote soft ones, make more issues clickable, and document the catalog.
+
+  - **Removed** four rules that flag valid designs or judgements the editor can't
+    make: `all-transitions-manual` (a manual-only state is normal),
+    `sync-on-likely-bottleneck-transition` (SYNC is fine in the STP path; slowness
+    isn't detectable here), `matches-pattern-unanchored`, and `like-wildcard-warning`.
+  - **Collapsed** the per-victim `unreachable-automated-transition` into
+    `null-criterion-not-last`: one warning on the always-fires transition now names
+    the transitions it shadows (in `detail.unreachable`), instead of a separate
+    warning per dead transition.
+  - **Demoted to `info`** five opinionated heuristics: `excessive-fan-out`,
+    `processor-overload`, `disabled-transition-on-active-workflow`,
+    `lifecycle-path-in-simple`, `function-without-quick-exit`.
+  - **Added jump targets** so the issues drawer's "Jump to" works for the
+    node-scoped survivors: `unreachable-state`, `excessive-fan-out`,
+    `unknown-transition-target`, `duplicate-transition-name`,
+    `duplicate-processor-name`, `processor-overload`,
+    `disabled-transition-on-active-workflow`, and
+    `start-new-tx-without-commit-before-dispatch`.
+  - **Documented** every code in `docs/validation-rules.md`, kept honest by a
+    drift-guard test that fails if a rule is added or removed without updating the
+    catalog.
+
+  Criterion-scoped clickability (e.g. `unsupported-operator`) is left for a
+  follow-up — it needs a criterion→host targeting path the current drawer doesn't
+  resolve.
+
+- 532a305: Add workflow-level criterion editing and remove the redundant `setWorkflowCriterion` patch op.
+
+  The workflow inspector (`WorkflowForm`) now lets you add, edit, and remove a
+  workflow's `criterion` using the same Monaco JSON editor, live validation, and
+  add/edit/remove affordances as transition criteria — dispatched through the
+  existing host-based `setCriterion` op with a `{ kind: "workflow" }` host. A
+  caption explains that the criterion decides whether the workflow applies to an
+  entity of its model (disambiguating when several workflows target the same
+  model), and the empty state shows workflow-appropriate copy instead of the
+  transition "automated" warning.
+
+  - **`@cyoda/workflow-core`**: **Breaking:** remove the unused
+    `setWorkflowCriterion` member of `DomainPatch` (and its apply/invert cases).
+    It had no producers; the general `setCriterion` op already supports a workflow
+    host for both apply and undo/invert. Consumers constructing
+    `setWorkflowCriterion` should switch to
+    `{ op: "setCriterion", host: { kind: "workflow", workflow }, path: ["criterion"], criterion }`.
+  - **`@cyoda/workflow-react`**: add the workflow criterion section to
+    `WorkflowForm`; add `criterion.workflowCaption` / `criterion.workflowNone`
+    i18n keys; the `setCriterion` undo label is now host-aware
+    ("Set workflow criterion").
+
+  **Downstream:** confirm `cyoda-dev-console` does not construct
+  `setWorkflowCriterion` (nothing in this repo did).
+
 ## 0.4.0
 
 ### Minor Changes

@@ -1,5 +1,14 @@
 # @cyoda/workflow-monaco
 
+## 0.2.2
+
+### Patch Changes
+
+- Updated dependencies [bfd2c5a]
+- Updated dependencies [946e7ee]
+- Updated dependencies [532a305]
+  - @cyoda/workflow-core@0.5.0
+
 ## 0.2.1
 
 ### Patch Changes
