@@ -656,6 +656,18 @@ export function WorkflowEditor({
     [actions],
   );
 
+  // Toggle the workflow-settings inspector: close it if it's already the open
+  // panel, otherwise select the active workflow to open it.
+  const toggleWorkflowSettings = useCallback(() => {
+    if (inspectorOpen && selectionRef.current?.kind === "workflow") {
+      handleSelectionChange(null);
+    } else {
+      handleSelectionChange(
+        activeWorkflowRef.current ? { kind: "workflow", workflow: activeWorkflowRef.current } : null,
+      );
+    }
+  }, [inspectorOpen, handleSelectionChange]);
+
   const confirmAddState = useCallback(
     (name: string) => {
       const workflow = state.activeWorkflow;
@@ -880,6 +892,7 @@ export function WorkflowEditor({
         transitionPositions={transitionPositions}
         onTransitionLabelDragEnd={handleTransitionLabelDragEnd}
         onSelectionChange={handleSelectionChange}
+        onToggleWorkflowSettings={toggleWorkflowSettings}
         onViewportChange={handleViewportChange}
         onConnect={handleConnect}
         onReconnect={handleReconnect}
