@@ -1,0 +1,24 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "baseBranches": ["staging"],
+  "labels": ["dependencies"],
+
+  "dependencyDashboard": true,
+  "dependencyDashboardApproval": true,
+  "dependencyDashboardTitle": "Dependency Dashboard — tick an item to have Renovate open its PR",
+
+  "minimumReleaseAge": "14 days",
+  "internalChecksFilter": "strict",
+
+  "lockFileMaintenance": { "enabled": false },
+
+  "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "dependencyDashboardApproval": false,
+    "minimumReleaseAge": null,
+    "prCreation": "immediate",
+    "labels": ["dependencies", "security"]
+  }
+}
