@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   NAME_REGEX,
+  type Annotations,
   type DomainPatch,
   type ExecutionMode,
   type ExternalizedProcessor,
@@ -11,6 +12,7 @@ import { useMessages } from "../i18n/context.js";
 import { colors, radii } from "../style/tokens.js";
 import { CustomSelectInput } from "./fields.js";
 import { ModalFrame } from "../modals/DeleteStateModal.js";
+import { AnnotationsField } from "./AnnotationsField.js";
 
 const EXECUTION_MODES: ExecutionMode[] = [
   "ASYNC_NEW_TX",
@@ -48,6 +50,7 @@ type ProcessorDraft = {
   context: string;
   asyncResult: boolean;
   crossoverToAsyncMs: string;
+  annotations?: Annotations;
 };
 
 function toDraft(processor?: Processor): ProcessorDraft {
@@ -69,6 +72,7 @@ function toDraft(processor?: Processor): ProcessorDraft {
       externalized?.config?.crossoverToAsyncMs !== undefined
         ? String(externalized.config.crossoverToAsyncMs)
         : "",
+    annotations: externalized?.annotations,
   };
 }
 
@@ -95,6 +99,7 @@ function toProcessor(draft: ProcessorDraft): Processor {
       ? { startNewTxOnDispatch: true }
       : {}),
     ...(Object.keys(config).length > 0 ? { config } : {}),
+    ...(draft.annotations !== undefined ? { annotations: draft.annotations } : {}),
   };
 }
 
@@ -267,13 +272,15 @@ export function ProcessorEditorModal({
           </FormField>
 
           <FormField label="Retry policy">
-            <input
-              type="text"
+            <CustomSelectInput
               value={draft.retryPolicy}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, retryPolicy: event.target.value }))
-              }
-              style={inputStyle}
+              options={[
+                { value: "", label: "Default (FIXED)" },
+                { value: "NONE", label: "NONE" },
+                { value: "FIXED", label: "FIXED" },
+              ]}
+              onChange={(next) => setDraft((current) => ({ ...current, retryPolicy: next }))}
+              testId="processor-retry-policy"
             />
           </FormField>
 
@@ -322,6 +329,19 @@ export function ProcessorEditorModal({
               style={disabled ? disabledInputStyle : inputStyle}
             />
           </FormField>
+        </div>
+
+        <div
+          data-testid="processor-annotations"
+          style={{ display: "flex", flexDirection: "column", gap: 8, gridColumn: "1 / -1" }}
+        >
+          <AnnotationsField
+            value={draft.annotations}
+            disabled={disabled}
+            modelKey={`processor-${initialProcessor?.name ?? "new"}`}
+            onCommit={(a) => setDraft((c) => ({ ...c, annotations: a }))}
+            onRemove={() => setDraft((c) => ({ ...c, annotations: undefined }))}
+          />
         </div>
 
         {error && (

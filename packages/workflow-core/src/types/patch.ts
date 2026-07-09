@@ -7,7 +7,9 @@ import type { Annotations, StateCode, Transition, Workflow } from "./workflow.js
 export type AnnotationsTarget =
   | { kind: "workflow"; workflow: string }
   | { kind: "state"; workflow: string; stateCode: StateCode }
-  | { kind: "transition"; transitionUuid: string };
+  | { kind: "transition"; transitionUuid: string }
+  | { kind: "workflowCriterion"; workflow: string }
+  | { kind: "transitionCriterion"; transitionUuid: string };
 
 export type DomainPatch =
   | { op: "addWorkflow"; workflow: Workflow }

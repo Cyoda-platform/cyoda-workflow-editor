@@ -12,3 +12,4 @@ export type {
 } from "@cyoda/workflow-graph";
 export { simpleLayout } from "./layout.js";
 export type { LayoutResult, NodePosition } from "./layout.js";
+export { AnnotationLines, readAnnotationText } from "./components/TransitionTooltip.js";

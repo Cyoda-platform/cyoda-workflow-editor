@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AnnotationsSchema } from "./annotations.js";
 import { FunctionConfigSchema } from "./criterion.js";
 import { NameSchema } from "./name.js";
 
@@ -14,6 +15,7 @@ export const ExternalizedProcessorSchema = z.object({
   name: NameSchema,
   executionMode: ExecutionModeSchema.optional(),
   startNewTxOnDispatch: z.boolean().optional(),
+  annotations: AnnotationsSchema.optional(),
   config: FunctionConfigSchema.and(
     z.object({
       asyncResult: z.boolean().optional(),
