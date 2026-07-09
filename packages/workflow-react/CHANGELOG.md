@@ -1,5 +1,158 @@
 # @cyoda/workflow-react
 
+## 0.5.0
+
+### Minor Changes
+
+- c67b91b: Add a layout-options menu to the canvas: pick auto-layout orientation and density.
+
+  The Auto-arrange control now has a companion "Layout options" button that opens a
+  small menu with **Orientation** (Vertical / Horizontal) and **Density**
+  (Compact / Comfortable / Roomy). Changing either re-arranges the active workflow
+  immediately, and the choice is persisted to `localStorage` per editor
+  (`<localStorageKey>:pref`). Orientation was fully implemented in the layout
+  engine but previously unreachable from the UI, which hardcoded vertical /
+  readable. The host `layoutOptions` prop still drives orientation/density when it
+  changes; the user's menu choice wins until then.
+
+  - **`@cyoda/workflow-react`**: new `LayoutOptionsMenu` + persisted layout
+    preference wired into the canvas.
+  - **`@cyoda/workflow-layout`**: remove the unused ELK preset bundles
+    (`presets/index.ts`) — dead code the tree-layout engine never consumed (it
+    derives spacing directly), so the package no longer advertises layout modes it
+    doesn't run.
+
+- 0297f22: Expose the processor `context` and `startNewTxOnDispatch` config fields in the processor editor.
+
+  Both already round-tripped on save but had no form control, so an imported
+  processor's `context` (e.g. `"channel=email,customer"`) was preserved yet
+  invisible. The processor modal now has:
+
+  - **Context** — a text field for the pass-through string forwarded verbatim as
+    the outgoing request's `parameters` node (empty ⇒ omitted).
+  - **Start new transaction on dispatch** — a checkbox, enabled only for
+    `COMMIT_BEFORE_DISPATCH` execution mode (and cleared when the mode changes
+    away from it), matching the engine's validation.
+
+- bfd2c5a: Support cyoda-go 0.8.2 processor & criterion annotations, and surface them in the transition tooltip.
+
+  - **`@cyoda/workflow-core`**: add `annotations` to processors and `criterionAnnotations`
+    (sibling to `criterion`) on workflows and transitions; the 0.8 dialect emits them
+    (`omitempty`, so workflows that don't use them serialise byte-identically), extended
+    in place — `LATEST_CYODA_VERSION` stays `"0.8"`. `setAnnotations` gains
+    `workflowCriterion`/`transitionCriterion` targets; `annotations-too-large` covers the
+    new placements.
+  - **`@cyoda/workflow-viewer` / `@cyoda/workflow-react`**: the transition hover tooltip
+    shows the well-known `displayName`/`description` annotation keys for the transition,
+    its criterion, and each processor; the raw-JSON annotations editor is available for
+    processor annotations (modal) and criterion annotations.
+
+- 276bf9e: Collapse state coloring to three roles: INITIAL, TERMINAL, and STATE.
+
+  The viewer previously derived two extra heuristic categories — `PROCESSING_STATE`
+  (any outgoing transition carries a processor) and `MANUAL_REVIEW` (every inbound
+  transition is manual) — and rendered them as distinct blue and purple nodes with
+  "PROCESSING"/"MANUAL REVIEW" header labels. Those heuristics were semantically
+  misleading in many workflow shapes, so they are removed. Every non-initial,
+  non-terminal state now renders in a single blue, and ordinary intermediate states
+  no longer show a category header row at all (the "STATE" label added nothing the
+  node shape didn't already convey). INITIAL (green) and TERMINAL (red) are
+  unchanged. Transition/edge coloring is untouched.
+
+  - **`@cyoda/workflow-graph`**: **Breaking:** remove the `category` field from
+    `StateNode` and the `computeCategory` export. Consumers that read
+    `node.category` should drop it; the visual distinction it fed no longer exists.
+  - **`@cyoda/workflow-viewer`**: **Breaking:** remove `manualReview` and
+    `processing` from the `NodePalette` theme tokens; the `node.default` palette is
+    now blue (was teal). `roleCategoryLabel` returns `""` for ordinary states, and
+    the renderers omit the header row when the label is empty.
+  - **`@cyoda/workflow-react`**: **Breaking:** remove the `help.stateProcessing`
+    and `help.stateManualReview` i18n message keys; the Help legend no longer lists
+    those two swatches.
+
+  **Downstream:** audit `cyoda-dev-console` for any use of `StateNode.category`,
+  the `manualReview`/`processing` `NodePalette` tokens, or the `stateProcessing`/
+  `stateManualReview` i18n keys before adopting these versions — all now fail to
+  typecheck. The Cyoda Launchpad `CyodaWorkflowDiagram` renderer needs a matching
+  palette update (intermediate states changed from teal to blue) to stay visually
+  identical.
+
+- 532a305: Add workflow-level criterion editing and remove the redundant `setWorkflowCriterion` patch op.
+
+  The workflow inspector (`WorkflowForm`) now lets you add, edit, and remove a
+  workflow's `criterion` using the same Monaco JSON editor, live validation, and
+  add/edit/remove affordances as transition criteria — dispatched through the
+  existing host-based `setCriterion` op with a `{ kind: "workflow" }` host. A
+  caption explains that the criterion decides whether the workflow applies to an
+  entity of its model (disambiguating when several workflows target the same
+  model), and the empty state shows workflow-appropriate copy instead of the
+  transition "automated" warning.
+
+  - **`@cyoda/workflow-core`**: **Breaking:** remove the unused
+    `setWorkflowCriterion` member of `DomainPatch` (and its apply/invert cases).
+    It had no producers; the general `setCriterion` op already supports a workflow
+    host for both apply and undo/invert. Consumers constructing
+    `setWorkflowCriterion` should switch to
+    `{ op: "setCriterion", host: { kind: "workflow", workflow }, path: ["criterion"], criterion }`.
+  - **`@cyoda/workflow-react`**: add the workflow criterion section to
+    `WorkflowForm`; add `criterion.workflowCaption` / `criterion.workflowNone`
+    i18n keys; the `setCriterion` undo label is now host-aware
+    ("Set workflow criterion").
+
+  **Downstream:** confirm `cyoda-dev-console` does not construct
+  `setWorkflowCriterion` (nothing in this repo did).
+
+### Patch Changes
+
+- bfd2c5a: Processor editor: "Retry policy" is now a dropdown (Default (FIXED) / NONE / FIXED) instead of a free-text field.
+
+  cyoda-go only accepts `NONE`, `FIXED`, or empty for a processor's `retryPolicy` (empty defaults to `FIXED`; anything else is rejected at import). The dropdown prevents entering an invalid value. The number of retries and the delay are server-configured, not part of the workflow JSON.
+
+- 2575315: Don't pop the inspector open when re-anchoring a transition.
+
+  Dragging a transition's endpoint (arrowhead) to a different anchor is a layout
+  tweak, but it was selecting the transition and opening the inspector. Two
+  causes, both fixed:
+
+  - **Trailing click after reconnect (primary):** the guard that suppresses
+    edge/node clicks during a reconnect was cleared in `onReconnectEnd`, which
+    fires _before_ the browser's trailing `click` — so `onEdgeClick` ran with the
+    guard already down and selected the transition. The guard is now cleared on
+    the next macrotask (after the trailing click), and `onNodeClick` honours it
+    too (a drop onto a node no longer selects the state).
+  - **Selection stealing on a completed re-anchor:** a pure re-anchor transaction
+    set `selectionAfter` to the transition, snapping the inspector off whatever
+    you had selected. It now preserves the current selection; only moving the
+    endpoint to a different target state selects the transition.
+
+  Genuine clicks on a transition still select it.
+
+- 459e2d9: The canvas "Workflow settings" button now toggles the workflow inspector.
+
+  Clicking the settings button (bottom of the canvas control stack) while the
+  workflow inspector is already open now closes it, instead of only ever opening
+  it. When something else is selected — or nothing — it opens the workflow
+  inspector as before.
+
+- 041b6a1: Compact the transition inspector by laying short controls out in a two-column grid.
+
+  Source/Target state, Type/Disabled, Source/Target anchor, and the scheduled
+  Delay/Timeout fields now sit two-up instead of each on its own full-width row;
+  Name, the criterion editor, the processor list, and annotations stay full width.
+  The grid uses `auto-fit` so it collapses back to a single column on a narrow
+  (docked) inspector. Purely presentational — no model or behaviour change.
+
+- Updated dependencies [c67b91b]
+- Updated dependencies [bfd2c5a]
+- Updated dependencies [276bf9e]
+- Updated dependencies [946e7ee]
+- Updated dependencies [532a305]
+  - @cyoda/workflow-layout@0.1.4
+  - @cyoda/workflow-core@0.5.0
+  - @cyoda/workflow-viewer@0.4.0
+  - @cyoda/workflow-graph@0.3.0
+  - @cyoda/workflow-monaco@0.2.2
+
 ## 0.4.1
 
 ### Patch Changes
