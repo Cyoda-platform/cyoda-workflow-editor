@@ -12,11 +12,29 @@
           "next": "active",
           "manual": false,
           "disabled": false,
+          "annotations": {
+            "displayName": "Activate document",
+            "description": "Validates a freshly submitted document and notifies the author once it goes live."
+          },
+          "criterion": {
+            "type": "simple",
+            "jsonPath": "$.submitted",
+            "operation": "EQUALS",
+            "value": true
+          },
+          "criterionAnnotations": {
+            "displayName": "Submitted for review",
+            "description": "Fires once the author marks the document as submitted."
+          },
           "processors": [
             {
               "type": "externalized",
               "name": "validate",
               "executionMode": "SYNC",
+              "annotations": {
+                "displayName": "Validate document",
+                "description": "Schema and business-rule checks before the document is activated."
+              },
               "config": {
                 "attachEntity": true
               }
@@ -24,6 +42,10 @@
             {
               "type": "externalized",
               "name": "notify_created",
+              "annotations": {
+                "displayName": "Creation notice",
+                "description": "Emails the author that their document is now active."
+              },
               "config": {
                 "calculationNodesTags": "notifications"
               }
@@ -39,12 +61,20 @@
           "next": "approved",
           "manual": true,
           "disabled": false,
+          "annotations": {
+            "displayName": "Approve",
+            "description": "Manager sign-off; sends the customer approval notification."
+          },
           "processors": [
             {
               "type": "externalized",
               "name": "notify",
               "executionMode": "COMMIT_BEFORE_DISPATCH",
               "startNewTxOnDispatch": true,
+              "annotations": {
+                "displayName": "Approval notice",
+                "description": "Notifies the customer channel after the approval commits."
+              },
               "config": {
                 "attachEntity": true,
                 "calculationNodesTags": "notifications,customer",
@@ -64,11 +94,19 @@
           "next": "archived",
           "manual": false,
           "disabled": false,
+          "annotations": {
+            "displayName": "Auto-archive",
+            "description": "Archives approved documents older than 30 days."
+          },
           "criterion": {
             "type": "lifecycle",
             "field": "creationDate",
             "operation": "LESS_OR_EQUAL",
             "value": "NOW_MINUS_30D"
+          },
+          "criterionAnnotations": {
+            "displayName": "Older than 30 days",
+            "description": "Lifecycle guard on the document's creation date."
           }
         },
         {
