@@ -184,6 +184,7 @@ function validateWorkflow(
                     w.name === wf.name ? { ...w, version: dialect.schemaVersionTag } : w,
                   ),
                 },
+                meta: { ...d.meta, revision: d.meta.revision + 1 },
               }),
             },
           });

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { parseImportPayload } from "../../src/index.js";
+import { parseImportPayload, validateSemantics } from "../../src/index.js";
+import type { WorkflowSession } from "../../src/index.js";
 
 function parse(version: string) {
   return parseImportPayload(JSON.stringify({
@@ -9,6 +10,17 @@ function parse(version: string) {
       states: { A: { transitions: [] } },
     }],
   }));
+}
+
+function sessionWithVersion(version: string): WorkflowSession {
+  return {
+    entity: null,
+    importMode: "MERGE",
+    workflows: [{
+      version, name: "w", initialState: "A", active: true,
+      states: { A: { transitions: [] } },
+    }],
+  };
 }
 
 describe("workflow schema version tag (spec §4)", () => {
@@ -23,11 +35,19 @@ describe("workflow schema version tag (spec §4)", () => {
     expect(issue?.fix?.label).toMatch(/1\.3/);
   });
 
-  test("the fix rewrites the tag to the dialect's", () => {
+  test("the fix rewrites the tag to the dialect's and bumps meta.revision", () => {
     const parsed = parse("1.0");
     const issue = parsed.issues.find((i) => i.code === "workflow-schema-version-outdated")!;
+    const before = parsed.document!.meta.revision;
     const fixed = issue.fix!.apply(parsed.document!);
     expect(fixed.session.workflows[0]!.version).toBe("1.3");
+    expect(fixed.meta.revision).toBe(before + 1);
+  });
+
+  test("with no document, the dialect falls back to LATEST_CYODA_VERSION and still fires", () => {
+    const issues = validateSemantics(sessionWithVersion("1.03"));
+    const issue = issues.find((i) => i.code === "workflow-schema-version-malformed");
+    expect(issue?.severity).toBe("error");
   });
 
   test.each(["1.1", "1.2", "1.3"])("%j is clean", (v) => {
