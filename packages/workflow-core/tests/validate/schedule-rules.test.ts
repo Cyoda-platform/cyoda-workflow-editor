@@ -90,6 +90,16 @@ describe("schedule semantic rules (spec §4)", () => {
       .not.toContain("schedule-mode-required");
   });
 
+  test("treats an explicit function: null as absent, not as a second mode", () => {
+    // Off the Zod path (applyPatch's Partial<Transition> bypasses it): a
+    // `delayMs` alongside an explicit `function: null` is one mode, not two.
+    // A `!== undefined` check alone would miscount this as two modes and
+    // wrongly raise schedule-mode-required.
+    expect(codes({
+      name: "t", next: "A", manual: false, schedule: { delayMs: 5, function: null },
+    })).not.toContain("schedule-mode-required");
+  });
+
   test("does not fire on a transition with no schedule", () => {
     const c = codes({ name: "t", next: "A", manual: true });
     expect(c).not.toContain("schedule-mode-required");
