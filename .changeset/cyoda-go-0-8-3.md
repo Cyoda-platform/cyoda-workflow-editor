@@ -2,6 +2,7 @@
 "@cyoda/workflow-core": minor
 "@cyoda/workflow-react": minor
 "@cyoda/workflow-graph": minor
+"@cyoda/workflow-viewer": patch
 ---
 
 Support cyoda-go 0.8.3 (workflow schema 1.3).
