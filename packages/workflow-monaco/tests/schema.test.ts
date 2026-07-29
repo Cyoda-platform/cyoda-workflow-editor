@@ -23,6 +23,10 @@ function fakeMonaco(): MonacoLike {
 }
 
 describe("workflowJsonSchema", () => {
+  it("generates despite the schedule refine", () => {
+    expect(() => workflowJsonSchema()).not.toThrow();
+  });
+
   it("emits a JSON schema derived from ImportPayloadSchema", () => {
     const schema = workflowJsonSchema() as Record<string, unknown>;
     expect(schema).toBeTypeOf("object");

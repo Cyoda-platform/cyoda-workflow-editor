@@ -14,7 +14,7 @@ const MINIMAL = JSON.stringify({
   importMode: "MERGE",
   workflows: [
     {
-      version: "1.0",
+      version: "1.3",
       name: "minimal",
       initialState: "start",
       active: true,
@@ -30,14 +30,14 @@ const MULTI = JSON.stringify({
   importMode: "MERGE",
   workflows: [
     {
-      version: "1.0",
+      version: "1.3",
       name: "alpha",
       initialState: "s1",
       active: true,
       states: { s1: { transitions: [] } },
     },
     {
-      version: "1.0",
+      version: "1.3",
       name: "beta",
       initialState: "s1",
       active: true,

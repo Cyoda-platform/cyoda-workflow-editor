@@ -12,7 +12,7 @@ describe("semantic validation", () => {
       importMode: "MERGE",
       workflows: [
         {
-          version: "1.0",
+          version: "1.3",
           name: "clean",
           initialState: "start",
           active: true,
@@ -44,7 +44,7 @@ describe("semantic validation", () => {
       importMode: "MERGE",
       workflows: [
         {
-          version: "1.0",
+          version: "1.3",
           name: "wf",
           initialState: "missing",
           active: true,
@@ -62,7 +62,7 @@ describe("semantic validation", () => {
       importMode: "MERGE",
       workflows: [
         {
-          version: "1.0",
+          version: "1.3",
           name: "wf",
           initialState: "a",
           active: true,
@@ -84,7 +84,7 @@ describe("semantic validation", () => {
       importMode: "MERGE",
       workflows: [
         {
-          version: "1.0",
+          version: "1.3",
           name: "wf",
           initialState: "a",
           active: true,
@@ -103,7 +103,7 @@ describe("semantic validation", () => {
       importMode: "MERGE",
       workflows: [
         {
-          version: "1.0",
+          version: "1.3",
           name: "wf",
           initialState: "a",
           active: true,
@@ -122,12 +122,12 @@ describe("semantic validation", () => {
     expect(codes(json)).toContain("duplicate-transition-name");
   });
 
-  test("crossover-without-async-result", () => {
+  test("crossover-unsupported", () => {
     const json = {
       importMode: "MERGE",
       workflows: [
         {
-          version: "1.0",
+          version: "1.3",
           name: "wf",
           initialState: "a",
           active: true,
@@ -154,7 +154,7 @@ describe("semantic validation", () => {
         },
       ],
     };
-    expect(codes(json)).toContain("crossover-without-async-result");
+    expect(codes(json)).toContain("crossover-unsupported");
   });
 
   test("a state with only manual transitions is not flagged (rule removed)", () => {
@@ -162,7 +162,7 @@ describe("semantic validation", () => {
       importMode: "MERGE",
       workflows: [
         {
-          version: "1.0",
+          version: "1.3",
           name: "wf",
           initialState: "a",
           active: true,
@@ -186,7 +186,7 @@ describe("semantic validation", () => {
 
 function makeWf(name: string) {
   return {
-    version: "1.0",
+    version: "1.3",
     name,
     initialState: "s",
     active: true,
@@ -202,7 +202,7 @@ describe("canonical JSON tolerance", () => {
     importMode: "REPLACE",
     workflows: [
       {
-        version: "1",
+        version: "1.3",
         name: "HelloWorldWorkflow",
         initialState: "START",
         active: true,

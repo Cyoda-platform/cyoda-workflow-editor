@@ -24,7 +24,7 @@ export function generateGrid(states: number, fanOut: number): ImportPayload {
     importMode: "MERGE",
     workflows: [
       {
-        version: "1.0",
+        version: "1.3",
         name: "grid",
         initialState: "s0",
         active: true,
@@ -55,7 +55,7 @@ export function generateChain(length: number): ImportPayload {
     importMode: "MERGE",
     workflows: [
       {
-        version: "1.0",
+        version: "1.3",
         name: "chain",
         initialState: "s0",
         active: true,

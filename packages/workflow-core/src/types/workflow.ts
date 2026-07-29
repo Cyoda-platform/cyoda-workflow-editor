@@ -33,11 +33,32 @@ export interface State {
 }
 
 /**
- * Transition-level scheduling (cyoda-go v0.8.0) — a schema/SPI placeholder; the
- * workflow engine does not yet execute scheduled transitions.
+ * A per-entity Function callout that computes a scheduled transition's firing
+ * time (cyoda-go 0.8.3). Dispatched like an externalized processor, but returns
+ * a typed `Schedule` result instead of an entity payload.
+ */
+export interface ScheduleFunction {
+  name: string;
+  resultKind: "Schedule";
+  calculationNodesTags: string;
+  attachEntity?: boolean;
+  context?: string;
+  responseTimeoutMs?: number;
+}
+
+/**
+ * Transition-level scheduling. Exactly one of `delayMs` / `function` must be
+ * present — enforced by a Zod refine and mirrored by the `schedule-mode-required`
+ * semantic rule.
+ *
+ * `delayMs` is optional because cyoda-go's presence test is `> 0`, not "key
+ * exists": the server treats any `delayMs <= 0` as absent, and its own export
+ * emits `delayMs: 0` alongside `function`. The dialect strips those before the
+ * schema sees them.
  */
 export interface TransitionSchedule {
-  delayMs: number;
+  delayMs?: number;
+  function?: ScheduleFunction;
   timeoutMs?: number;
 }
 

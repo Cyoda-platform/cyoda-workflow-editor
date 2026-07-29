@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, type CSSProperties } from "react";
 import type {
+  ValidationFix,
   ValidationIssue,
   WorkflowEditorDocument,
 } from "@cyoda/workflow-core";
@@ -9,6 +10,16 @@ import { colors, radii, severityTone } from "../style/tokens.js";
 
 export type IssueSeverity = ValidationIssue["severity"];
 
+const actionButtonStyle: CSSProperties = {
+  padding: "2px 8px",
+  background: colors.surface,
+  border: `1px solid ${colors.border}`,
+  borderRadius: radii.sm,
+  fontSize: 11,
+  cursor: "pointer",
+  color: colors.textPrimary,
+};
+
 export interface IssuesDrawerProps {
   open: boolean;
   severity: IssueSeverity;
@@ -16,6 +27,11 @@ export interface IssuesDrawerProps {
   document: WorkflowEditorDocument;
   onClose: () => void;
   onJumpTo: (selection: Selection) => void;
+  /**
+   * Invoked when the user activates an issue's offered remediation. Omitted in
+   * read-only surfaces (the viewer), where no fix action is rendered.
+   */
+  onApplyFix?: (fix: ValidationFix) => void;
 }
 
 interface ResolvedTarget {
@@ -78,6 +94,7 @@ export function IssuesDrawer({
   document: doc,
   onClose,
   onJumpTo,
+  onApplyFix,
 }: IssuesDrawerProps) {
   const messages = useMessages();
   const ref = useRef<HTMLDivElement>(null);
@@ -204,6 +221,11 @@ export function IssuesDrawer({
         >
           {filtered.map((issue, idx) => {
             const target = resolveTarget(doc, issue.targetId);
+            // An issue may carry a remediation (`ValidationFix`). Rendering it
+            // here is what makes the offered-fix contract real — spec §4 chose
+            // "warn and offer a fix" over both blocking and silent rewriting,
+            // and a fix nobody can invoke is just the warning-only option.
+            const fix = onApplyFix ? issue.fix : undefined;
             const targetLabel = target
               ? target.kind === "transition"
                 ? `${messages.issues.relatedTransition}: ${target.label}`
@@ -236,28 +258,34 @@ export function IssuesDrawer({
                     {targetLabel}
                   </div>
                 )}
-                {target && (
-                  <div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onJumpTo(target.selection);
-                        onClose();
-                      }}
-                      data-testid={`issues-drawer-jump-${idx}`}
-                      style={{
-                        marginTop: 4,
-                        padding: "2px 8px",
-                        background: colors.surface,
-                        border: `1px solid ${colors.border}`,
-                        borderRadius: radii.sm,
-                        fontSize: 11,
-                        cursor: "pointer",
-                        color: colors.textPrimary,
-                      }}
-                    >
-                      {messages.issues.jumpTo}
-                    </button>
+                {(target || fix) && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
+                    {target && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onJumpTo(target.selection);
+                          onClose();
+                        }}
+                        data-testid={`issues-drawer-jump-${idx}`}
+                        style={actionButtonStyle}
+                      >
+                        {messages.issues.jumpTo}
+                      </button>
+                    )}
+                    {fix && (
+                      <button
+                        type="button"
+                        // Deliberately leaves the drawer open: the issue list
+                        // re-derives from the patched document, so the user
+                        // sees the issue they just fixed disappear.
+                        onClick={() => onApplyFix?.(fix)}
+                        data-testid={`issues-drawer-fix-${idx}`}
+                        style={{ ...actionButtonStyle, fontWeight: 600, borderColor: tone.fg }}
+                      >
+                        {fix.label}
+                      </button>
+                    )}
                   </div>
                 )}
               </li>

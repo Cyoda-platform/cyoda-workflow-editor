@@ -2,35 +2,16 @@ import { describe, expect, test } from "vitest";
 import { parseImportPayload, serializeImportPayload } from "../../src/index.js";
 import { V0_8_WIRE_FIELDS } from "../../src/dialect/cyoda-0_8.js";
 
+function isObj(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
 function importJson(workflow: Record<string, unknown>): string {
   return JSON.stringify({ importMode: "MERGE", workflows: [workflow] });
 }
 
-const scheduledWorkflow = {
-  version: "1.0",
-  name: "wf",
-  initialState: "new",
-  active: true,
-  states: {
-    new: {
-      transitions: [
-        {
-          name: "go",
-          next: "done",
-          manual: false,
-          processors: [
-            { type: "externalized", name: "validate", executionMode: "SYNC" },
-            { type: "scheduled", name: "timer", config: { delayMs: 1000, transition: "go" } },
-          ],
-        },
-      ],
-    },
-    done: { transitions: [] },
-  },
-};
-
 const v08Workflow = {
-  version: "1.0",
+  version: "1.3",
   name: "wf",
   initialState: "new",
   active: true,
@@ -49,28 +30,6 @@ const v08Workflow = {
     done: { transitions: [] },
   },
 };
-
-describe("0.7 dialect drops scheduled processors with a warning", () => {
-  test("a scheduled processor is removed and reported", () => {
-    const result = parseImportPayload(importJson(scheduledWorkflow), undefined, {
-      sourceVersion: "0.7",
-    });
-
-    expect(result.ok).toBe(true);
-    expect(result.warnings).toContain("dropped-scheduled-processor:timer");
-
-    const procs = result.value?.workflows[0]?.states["new"]?.transitions[0]?.processors;
-    expect(procs?.map((p) => p.name)).toEqual(["validate"]);
-    expect(procs?.some((p) => (p as { type: string }).type === "scheduled")).toBe(false);
-  });
-
-  test("no warnings field when there is nothing to drop", () => {
-    const result = parseImportPayload(importJson(v08Workflow), undefined, {
-      sourceVersion: "0.7",
-    });
-    expect(result.warnings).toBeUndefined();
-  });
-});
 
 describe("0.8 dialect preserves transitions[].schedule", () => {
   test("schedule survives parse and is present on the canonical transition", () => {
@@ -96,14 +55,6 @@ describe("0.8 dialect preserves transitions[].schedule", () => {
     expect(wire1).toContain('"delayMs": 5000');
     expect(wire1).toContain('"timeoutMs": 30000');
   });
-
-  test("0.7 wire omits transitions[].schedule (field absent in v0.7)", () => {
-    const parsed = parseImportPayload(importJson(v08Workflow), undefined, {
-      sourceVersion: "0.8",
-    });
-    const wire07 = serializeImportPayload(parsed.document!, { targetVersion: "0.7" });
-    expect(wire07).not.toContain('"schedule"');
-  });
 });
 
 describe("0.8 wire output is provably allowlist-clean", () => {
@@ -122,6 +73,16 @@ describe("0.8 wire output is provably allowlist-clean", () => {
     );
     transition["__hover"] = true;
     (transition["schedule"] as Record<string, unknown>)["__note"] = "x";
+    // Inject a schedule.function object bearing a junk key too, so the nested
+    // pick in allowlistTransition (SCHEDULE_FUNCTION_FIELDS) is actually
+    // exercised — without this, assertKeysSubset's `scheduleFunction` branch
+    // never runs against any object in this suite.
+    (transition["schedule"] as Record<string, unknown>)["function"] = {
+      name: "c",
+      resultKind: "Schedule",
+      calculationNodesTags: "s",
+      __fnJunk: "z",
+    };
     (transition["processors"] as Record<string, unknown>[])[0]["__selected"] = true;
 
     const wire = JSON.parse(serializeImportPayload(parsed.document!, { targetVersion: "0.8" }));
@@ -132,7 +93,11 @@ describe("0.8 wire output is provably allowlist-clean", () => {
       assertKeysSubset(state, V0_8_WIRE_FIELDS.state);
       for (const t of (state["transitions"] as Record<string, unknown>[]) ?? []) {
         assertKeysSubset(t, V0_8_WIRE_FIELDS.transition);
-        if (t["schedule"]) assertKeysSubset(t["schedule"], V0_8_WIRE_FIELDS.schedule);
+        if (isObj(t["schedule"])) {
+          assertKeysSubset(t["schedule"], V0_8_WIRE_FIELDS.schedule);
+          const fn = (t["schedule"] as Record<string, unknown>)["function"];
+          if (isObj(fn)) assertKeysSubset(fn, V0_8_WIRE_FIELDS.scheduleFunction);
+        }
         for (const p of (t["processors"] as Record<string, unknown>[]) ?? []) {
           assertKeysSubset(p, V0_8_WIRE_FIELDS.processor);
           if (p["config"]) assertKeysSubset(p["config"], V0_8_WIRE_FIELDS.processorConfig);
@@ -145,6 +110,10 @@ describe("0.8 wire output is provably allowlist-clean", () => {
     expect(serialized).not.toContain("__hover");
     expect(serialized).not.toContain("__note");
     expect(serialized).not.toContain("__selected");
+    expect(serialized).not.toContain("__fnJunk");
+    // And prove the function survives at all — its known fields must be present
+    // beside the ones just stripped.
+    expect(serialized).toContain('"resultKind":"Schedule"');
   });
 });
 
@@ -156,7 +125,7 @@ function assertKeysSubset(obj: unknown, allowed: readonly string[]): void {
 }
 
 const annotatedWorkflow = {
-  version: "1.0",
+  version: "1.3",
   name: "wf",
   initialState: "new",
   active: true,
@@ -171,6 +140,66 @@ const annotatedWorkflow = {
     done: { transitions: [] },
   },
 };
+
+describe("0.8 dialect emits schedule.function", () => {
+  test("emits schedule.function in wire order and strips unknown nested keys", () => {
+    const raw = JSON.stringify({
+      importMode: "MERGE",
+      workflows: [{
+        version: "1.3", name: "w", initialState: "A", active: true,
+        states: { A: { transitions: [{
+          name: "t", next: "A", manual: false,
+          schedule: {
+            timeoutMs: 500,
+            function: {
+              name: "c", resultKind: "Schedule", calculationNodesTags: "s",
+              attachEntity: false, context: "ctx", responseTimeoutMs: 5000,
+            },
+          },
+        }] } },
+      }],
+    });
+    const parsed = parseImportPayload(raw);
+    const out = JSON.parse(serializeImportPayload(parsed.document!));
+    const s = out.workflows[0].states.A.transitions[0].schedule;
+    expect(Object.keys(s)).toEqual(["timeoutMs", "function"]);
+    expect(Object.keys(s.function)).toEqual([
+      "name", "resultKind", "calculationNodesTags",
+      "attachEntity", "context", "responseTimeoutMs",
+    ]);
+    // attachEntity: false must survive — absent would mean true server-side.
+    expect(s.function.attachEntity).toBe(false);
+  });
+
+  test("wire output drops delayMs: 0 beside function (restores Task 7's wire-level assertion)", () => {
+    // Task 7's normalization test (tests/dialect/normalization.test.ts) had to
+    // retarget this assertion at the canonical document because outputSchedule
+    // could not yet emit `function`. Now that it can, assert it here on the
+    // serialized wire bytes: a schedule arriving as `{delayMs: 0, timeoutMs: 500,
+    // function: {...}}` re-serializes without `delayMs` but with `function` intact.
+    const raw = JSON.stringify({
+      importMode: "MERGE",
+      workflows: [{
+        version: "1.3", name: "w", initialState: "A", active: true,
+        states: { A: { transitions: [{
+          name: "t", next: "A", manual: false,
+          schedule: {
+            delayMs: 0, timeoutMs: 500,
+            function: { name: "c", resultKind: "Schedule", calculationNodesTags: "s" },
+          },
+        }] } },
+      }],
+    });
+    const parsed = parseImportPayload(raw);
+    const wire = serializeImportPayload(parsed.document!);
+    const out = JSON.parse(wire);
+    const s = out.workflows[0].states.A.transitions[0].schedule;
+    expect(s).not.toHaveProperty("delayMs");
+    expect(s.function).toEqual({
+      name: "c", resultKind: "Schedule", calculationNodesTags: "s",
+    });
+  });
+});
 
 describe("0.8 dialect round-trips annotations", () => {
   test("annotations at all three levels survive parse -> serialize -> parse", () => {
@@ -190,11 +219,5 @@ describe("0.8 dialect round-trips annotations", () => {
     const parsed = parseImportPayload(importJson(annotatedWorkflow), undefined, { sourceVersion: "0.8" });
     const wire = serializeImportPayload(parsed.document!, { targetVersion: "0.8" });
     expect(wire).toContain('"color"');
-  });
-
-  test("0.7 wire omits annotations (field absent in v0.7)", () => {
-    const parsed = parseImportPayload(importJson(annotatedWorkflow), undefined, { sourceVersion: "0.8" });
-    const wire07 = serializeImportPayload(parsed.document!, { targetVersion: "0.7" });
-    expect(wire07).not.toContain('"annotations"');
   });
 });

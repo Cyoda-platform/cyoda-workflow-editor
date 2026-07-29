@@ -2,7 +2,7 @@
   "importMode": "MERGE",
   "workflows": [
     {
-      "version": "1.0",
+      "version": "1.3",
       "name": "TradeSettlementWorkflow",
       "desc": "Governs the post-trade lifecycle through validation, matching, affirmation, and instruction with explicit repair loop-backs and immutable event history.",
       "initialState": "RECEIVED",

@@ -28,7 +28,7 @@ function sessionWith(transitions: Transition[]): WorkflowSession {
     importMode: "MERGE",
     workflows: [
       {
-        version: "1.0",
+        version: "1.3",
         name: "wf",
         initialState: "start",
         active: true,
@@ -109,6 +109,19 @@ describe("automated transition ordering rules", () => {
     expect(offenders[0]?.detail?.["transitionName"]).toBe("alpha");
     expect(offenders[0]?.detail?.["unreachable"]).toEqual(["beta"]);
     expect(issues.map((i) => i.code)).not.toContain("unreachable-automated-transition");
+  });
+
+  test("an explicit criterion: null counts as unguarded, same as an absent one", () => {
+    // `validateSemantics` is public API and `validateAfterPatch` calls it with
+    // zero normalization, so an explicit `null` (what the server emits and what
+    // a hand-edited document carries) must not silently stop the rule firing —
+    // the same argument `findUnguardedCycles` already applies with `== null`.
+    const unguarded = { ...tr("go"), criterion: null } as unknown as Transition;
+    const offenders = validateSemantics(
+      sessionWith([unguarded, tr("fallback", { criterion: SIMPLE })]),
+    ).filter((i) => i.code === "null-criterion-not-last");
+    expect(offenders).toHaveLength(1);
+    expect(offenders[0]?.detail?.["unreachable"]).toEqual(["fallback"]);
   });
 
   test("all guarded automated transitions → no warnings emitted", () => {

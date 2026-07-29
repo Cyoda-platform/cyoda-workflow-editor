@@ -106,6 +106,7 @@ export function normalizeCriterion(criterion: Criterion, depth = 0): Criterion {
 }
 
 export function normalizeProcessor(p: Processor): Processor {
-  // `externalized` is the only processor type since the v0.8 major bump.
+  // `type` is preserved verbatim (see types/processor.ts) — only `name` is
+  // normalized here, regardless of type.
   return { ...p, name: p.name.trim() };
 }

@@ -20,7 +20,7 @@ function basePayload() {
     importMode: "MERGE",
     workflows: [
       {
-        version: "1.0",
+        version: "1.3",
         name: "wf",
         initialState: "start",
         active: true,
@@ -153,7 +153,7 @@ describe("walkCriteria — depth guard", () => {
     const depth = 10;
     const wf = {
       name: "wf",
-      version: "1.0",
+      version: "1.3",
       initialState: "s",
       active: true,
       states: {
@@ -179,7 +179,7 @@ describe("walkCriteria — depth guard", () => {
   test("does not throw or stack-overflow for a criterion tree 2× MAX_CRITERION_DEPTH", () => {
     const wf = {
       name: "wf",
-      version: "1.0",
+      version: "1.3",
       initialState: "s",
       active: true,
       states: {

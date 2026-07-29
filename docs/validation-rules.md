@@ -7,15 +7,27 @@ a `targetId` that makes the drawer's **Jump to** button navigate to the
 offending state, transition, processor, or workflow.
 
 Rules live in `packages/workflow-core/src/validate/semantic.ts` (plus the
-dynamic `schema-*` family in `schema.ts`). This catalog is kept in sync by
+dynamic `schema-*` family in `schema.ts`, and the import-time codes emitted by
+`parse/parse-import.ts`). This catalog is kept in sync by
 `packages/workflow-core/tests/validate/rule-catalog.test.ts`, which fails if a
 code is added or removed without updating this file.
 
 **Severity meaning**
 
-- **error** — the workflow is invalid or the engine will reject it; block save.
-- **warning** — the engine accepts it, but it's almost certainly a mistake.
+- **error** — the workflow is invalid, or *every* supported backend will reject
+  it; block save.
+- **warning** — one of two things: the engine accepts it but it's almost
+  certainly a mistake, **or** it is backend-conditional — cyoda-go rejects it
+  while Cyoda Cloud accepts and honours it. The second kind (today:
+  `async-result-unsupported`, `crossover-unsupported`) is deliberately *not* an
+  error: a user targeting Cyoda Cloud is writing a valid document and must not
+  be blocked, and the field must still round-trip. The message names the
+  backend split explicitly.
 - **info** — a neutral observation or a soft heuristic; never alarming.
+
+A rule is an **error** only when no supported backend accepts the document, or
+when the editor's own model cannot represent it. Anything that hinges on
+*which* backend the user is targeting is a warning.
 
 ## Errors
 
@@ -36,6 +48,13 @@ code is added or removed without updating this file.
 | `simple-between-shape` | criterion | — | `BETWEEN` / `BETWEEN_INCLUSIVE` needs a two-element `[low, high]` value. |
 | `criterion-depth-limit` | criterion | — | Criterion tree depth reaches the engine limit. |
 | `annotations-too-large` | wf / state / transition | yes | Annotations exceed the 64 KiB cap. |
+| `schedule-mode-required` | transition | yes | A `schedule` has neither `delayMs` nor `function` (or both); exactly one is required. |
+| `schedule-manual-conflict` | transition | yes | A transition has both `schedule` and `manual: true`; the two are mutually exclusive. |
+| `schedule-function-incomplete` | transition | yes | `schedule.function` is missing `name` or `calculationNodesTags`. |
+| `workflow-schema-version-malformed` | workflow | yes | The in-document `version` tag is not `MAJOR.MINOR`, uses an unsupported major, or exceeds the max minor the target server accepts. |
+| `unknown-retry-policy` | processor | yes | Processor `config.retryPolicy` is outside `NONE` / `FIXED` / empty; cyoda-go hard-400s on anything else. |
+| `start-new-tx-without-commit-before-dispatch` | processor | yes | `startNewTxOnDispatch` is set but the mode is not `COMMIT_BEFORE_DISPATCH`. |
+| `operator-alias-conflict` | — | — | Import only. A criterion carries two spellings of the same operator with different values, so the alias cannot be normalized. |
 | `schema-*` | varies | — | A canonical Zod schema check failed; the suffix is the Zod issue code. |
 
 ## Warnings
@@ -46,11 +65,16 @@ code is added or removed without updating this file.
 | `unsupported-operator` | criterion | — | A known operator the engine does not implement. |
 | `unsupported-group-operator` | criterion | — | Group operator `NOT` is not implemented by the engine. |
 | `not-with-multiple-conditions` | criterion | — | A `NOT` group carries more than one condition. |
-| `start-new-tx-without-commit-before-dispatch` | processor | yes | `startNewTxOnDispatch` is set but the mode is not `COMMIT_BEFORE_DISPATCH`. |
-| `crossover-without-async-result` | processor | — | `crossoverToAsyncMs` is set but `asyncResult` is not true. |
+| `async-result-unsupported` | processor | yes | `config.asyncResult` is `true`; rejected by cyoda-go, supported on Cyoda Cloud only. |
+| `crossover-unsupported` | processor | yes | `config.crossoverToAsyncMs` is set; rejected by cyoda-go, supported on Cyoda Cloud only. |
+| `processor-type-internalized` | processor | yes | Processor `type` is the reserved value `"internalized"`; cyoda-go accepts it at import but rejects it at dispatch. |
+| `processor-type-non-canonical` | processor | yes | Processor `type` is neither `"externalized"` nor empty; cyoda-go stores and returns it verbatim today. |
 | `criterion-depth-warning` | criterion | — | Criterion tree depth is near the engine limit. |
 | `unreachable-state` | state | yes | A state is unreachable from the initial state. |
 | `null-criterion-not-last` | transition | yes | An automated no-criterion transition isn't last, so it always fires first; later automated transitions on the state are unreachable (they're named in the message). |
+| `schedule-timeout-negative` | transition | yes | `schedule.timeoutMs` is negative; the server accepts it but treats it like `0`. |
+| `workflow-schema-version-outdated` | workflow | yes | The in-document `version` tag is below the minimum minor the target server accepts; carries a `fix` that rewrites it to the dialect's current tag. |
+| `unguarded-automated-cycle` | workflow | yes | A cycle is reachable purely via unguarded automated transitions (`manual: false`, not `disabled`, no `criterion` — a `schedule` does not exempt an edge). cyoda-go rejects this at import unless `allowCycles` is set. Necessary but not sufficient: detection runs against the merged stored result, so a `MERGE` can still be rejected over a cycle this document doesn't contain — never treated as an error. |
 
 ## Info
 
@@ -64,6 +88,10 @@ code is added or removed without updating this file.
 | `disabled-transition-on-active-workflow` | transition | yes | A disabled transition inside an active workflow. |
 | `lifecycle-path-in-simple` | criterion | — | A simple criterion path looks like a `$._meta` lifecycle path. |
 | `function-without-quick-exit` | criterion | — | A function criterion has no local quick-exit guard (every eval calls out). |
+| `cyoda-version-unresolvable` | — | — | `meta.cyodaVersion` names a cyoda-go dialect this build does not ship (e.g. the removed `"0.7"`), so the workflow schema version-tag checks are skipped. Everything else still validates. |
+| `processor-keys-dropped` | — | — | Import only. Processor keys outside the cyoda-go wire format were discarded; the editor cannot round-trip them. Also on `ParseResult.warnings`. |
+| `processor-config-keys-dropped` | — | — | Import only. Processor `config` keys outside the cyoda-go wire format were discarded — the editor's only signal that it dropped part of a processor's meaning. Also on `ParseResult.warnings`. |
+| `dialect-warning` | — | — | Import only. A `toCanonical` warning from a host-registered dialect whose shape this library does not recognise; surfaced verbatim. |
 
 ## Notes
 

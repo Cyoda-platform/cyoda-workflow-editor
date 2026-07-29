@@ -295,7 +295,7 @@ const TWO_STATE_CONNECTED = JSON.stringify({
   importMode: "MERGE",
   workflows: [
     {
-      version: "1.0",
+      version: "1.3",
       name: "wf",
       initialState: "start",
       active: true,
@@ -311,7 +311,7 @@ const BIDIRECTIONAL_VERTICAL = JSON.stringify({
   importMode: "MERGE",
   workflows: [
     {
-      version: "1.0",
+      version: "1.3",
       name: "wf",
       initialState: "top",
       active: true,
@@ -331,7 +331,7 @@ const DENSE_TRANSITIONS = JSON.stringify({
   importMode: "MERGE",
   workflows: [
     {
-      version: "1.0",
+      version: "1.3",
       name: "wf",
       initialState: "start",
       active: true,
@@ -355,7 +355,7 @@ const FOUR_WAY_SPLIT = JSON.stringify({
   importMode: "MERGE",
   workflows: [
     {
-      version: "1.0",
+      version: "1.3",
       name: "wf",
       initialState: "sent",
       active: true,
@@ -381,7 +381,7 @@ const SELF_LOOP = JSON.stringify({
   importMode: "MERGE",
   workflows: [
     {
-      version: "1.0",
+      version: "1.3",
       name: "wf",
       initialState: "approved",
       active: true,
@@ -398,7 +398,7 @@ const DENSE_SELF_LOOP_RETARGET = JSON.stringify({
   importMode: "MERGE",
   workflows: [
     {
-      version: "1.0",
+      version: "1.3",
       name: "wf",
       initialState: "new",
       active: true,

@@ -12,7 +12,7 @@ const TWO_STATE = JSON.stringify({
   importMode: "MERGE",
   workflows: [
     {
-      version: "1.0",
+      version: "1.3",
       name: "wf",
       initialState: "A",
       active: true,
@@ -28,14 +28,14 @@ const TWO_WF = JSON.stringify({
   importMode: "MERGE",
   workflows: [
     {
-      version: "1.0",
+      version: "1.3",
       name: "wf1",
       initialState: "A",
       active: true,
       states: { A: { transitions: [] } },
     },
     {
-      version: "1.0",
+      version: "1.3",
       name: "wf2",
       initialState: "B",
       active: true,

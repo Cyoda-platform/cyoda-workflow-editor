@@ -26,7 +26,7 @@ function basePayload(processors: unknown[]) {
     importMode: "MERGE",
     workflows: [
       {
-        version: "1.0",
+        version: "1.3",
         name: "wf",
         initialState: "start",
         active: true,
@@ -49,13 +49,13 @@ describe("processor OpenAPI contract", () => {
           type: "externalized",
           name: "notify",
           executionMode: "ASYNC_NEW_TX",
-          startNewTxOnDispatch: true,
           config: {
             attachEntity: true,
             calculationNodesTags: "alpha,beta",
             context: "ctx",
             responseTimeoutMs: 2500,
             retryPolicy: "retry",
+            startNewTxOnDispatch: true,
             asyncResult: true,
             crossoverToAsyncMs: 500,
           },
@@ -70,8 +70,9 @@ describe("processor OpenAPI contract", () => {
       type: "externalized",
       name: "notify",
       executionMode: "ASYNC_NEW_TX",
-      startNewTxOnDispatch: true,
     });
+    expect(processor.config).toMatchObject({ startNewTxOnDispatch: true });
+    expect(processor).not.toHaveProperty("startNewTxOnDispatch");
   });
 
   test("missing processor type is normalized to externalized", () => {
@@ -92,7 +93,7 @@ describe("processor OpenAPI contract", () => {
     });
   });
 
-  test("externalized processor without executionMode emits ASYNC_NEW_TX in serialized output", () => {
+  test("externalized processor without executionMode omits it in serialized output", () => {
     const doc = parseDocument(
       basePayload([
         {
@@ -106,7 +107,7 @@ describe("processor OpenAPI contract", () => {
 
     const serialized = JSON.parse(serializeImportPayload(doc));
     const processor = serialized.workflows[0].states.start.transitions[0].processors[0];
-    expect(processor.executionMode).toBe("ASYNC_NEW_TX");
+    expect(processor).not.toHaveProperty("executionMode");
   });
 
   test("unknown externalized config keys are not preserved", () => {
@@ -128,15 +129,14 @@ describe("processor OpenAPI contract", () => {
     expect(serialized).not.toContain("unknownKey");
   });
 
-  test("COMMIT_BEFORE_DISPATCH is accepted by schema and semantic validation warns for invalid startNewTxOnDispatch pairing only", () => {
+  test("COMMIT_BEFORE_DISPATCH is accepted by schema and semantic validation errors for invalid startNewTxOnDispatch pairing only", () => {
     const validDoc = parseDocument(
       basePayload([
         {
           type: "externalized",
           name: "commit-proc",
           executionMode: "COMMIT_BEFORE_DISPATCH",
-          startNewTxOnDispatch: true,
-          config: { calculationNodesTags: "probe" },
+          config: { calculationNodesTags: "probe", startNewTxOnDispatch: true },
         },
       ]),
     );
@@ -150,17 +150,23 @@ describe("processor OpenAPI contract", () => {
           type: "externalized",
           name: "bad-proc",
           executionMode: "SYNC",
-          startNewTxOnDispatch: true,
-          config: { calculationNodesTags: "probe" },
+          config: { calculationNodesTags: "probe", startNewTxOnDispatch: true },
         },
       ]),
     );
-    expect(validateSession(invalidDoc.session).map((issue) => issue.code)).toContain(
+    const invalidIssues = validateSession(invalidDoc.session);
+    expect(invalidIssues.map((issue) => issue.code)).toContain(
       "start-new-tx-without-commit-before-dispatch",
     );
+    // The server hard-400s on this pairing, so this must be an error, not a
+    // warning — a warning would wave through a guaranteed rejection.
+    expect(
+      invalidIssues.find((issue) => issue.code === "start-new-tx-without-commit-before-dispatch")
+        ?.severity,
+    ).toBe("error");
   });
 
-  test("negative processor timing values are rejected", () => {
+  test("negative responseTimeoutMs parses cleanly; negative crossoverToAsyncMs is rejected", () => {
     const responseTimeout = parseImportPayload(
       JSON.stringify(
         basePayload([
@@ -173,7 +179,7 @@ describe("processor OpenAPI contract", () => {
         ]),
       ),
     );
-    expect(responseTimeout.issues.some((issue) => issue.severity === "error")).toBe(true);
+    expect(responseTimeout.issues.some((issue) => issue.severity === "error")).toBe(false);
 
     const crossover = parseImportPayload(
       JSON.stringify(
@@ -188,5 +194,28 @@ describe("processor OpenAPI contract", () => {
       ),
     );
     expect(crossover.issues.some((issue) => issue.severity === "error")).toBe(true);
+  });
+
+  test("startNewTxOnDispatch round-trips inside config, not on the processor", () => {
+    const raw = JSON.stringify({
+      importMode: "MERGE",
+      workflows: [{
+        version: "1.3", name: "w", initialState: "A", active: true,
+        states: { A: { transitions: [{
+          name: "t", next: "A", manual: true,
+          processors: [{
+            type: "externalized", name: "p",
+            executionMode: "COMMIT_BEFORE_DISPATCH",
+            config: { calculationNodesTags: "t", startNewTxOnDispatch: true },
+          }],
+        }] } },
+      }],
+    });
+    const parsed = parseImportPayload(raw);
+    expect(parsed.issues.filter((i) => i.severity === "error")).toEqual([]);
+    const out = JSON.parse(serializeImportPayload(parsed.document!));
+    const p = out.workflows[0].states.A.transitions[0].processors[0];
+    expect(p.config).toMatchObject({ startNewTxOnDispatch: true });
+    expect(p).not.toHaveProperty("startNewTxOnDispatch");
   });
 });

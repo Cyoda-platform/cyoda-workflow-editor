@@ -51,7 +51,7 @@ describe("workflow- and transition-level annotations survive parse", () => {
       importMode: "MERGE",
       workflows: [
         {
-          version: "1.0",
+          version: "1.3",
           name: "wf",
           initialState: "NEW",
           active: true,
@@ -80,7 +80,7 @@ describe("state-level annotations survive parse", () => {
       importMode: "MERGE",
       workflows: [
         {
-          version: "1.0",
+          version: "1.3",
           name: "wf",
           initialState: "NEW",
           active: true,

@@ -3,11 +3,11 @@ import { ImportPayloadSchema } from "../schema/payload.js";
 import type { WorkflowEditorDocument } from "../types/editor.js";
 import { assignSyntheticIds } from "../identity/assign.js";
 import { normalizeWorkflowInput } from "../normalize/input.js";
-import { normalizeOperatorAlias } from "./operator-alias.js";
+import { getDialect, LATEST_CYODA_VERSION } from "../dialect/index.js";
 import { validateSemantics } from "../validate/semantic.js";
 import { zodErrorToIssues } from "../validate/schema.js";
 import { ParseJsonError } from "./errors.js";
-import type { ParseResult } from "./parse-import.js";
+import { dialectWarningToIssue, type ParseResult } from "./parse-import.js";
 
 const EditorDocumentSchema = z.object({
   session: z.object({
@@ -18,6 +18,7 @@ const EditorDocumentSchema = z.object({
       })
       .nullable(),
     importMode: z.enum(["MERGE", "REPLACE", "ACTIVATE"]),
+    allowCycles: z.boolean().optional(),
     workflows: z.array(z.unknown()),
   }),
   meta: z
@@ -45,22 +46,56 @@ export function parseEditorDocument(
     return { ok: false, issues: zodErrorToIssues(outerResult.error) };
   }
 
-  const aliased = normalizeOperatorAlias(outerResult.data.session);
+  const version = (outerResult.data.meta as { cyodaVersion?: string }).cyodaVersion
+    ?? LATEST_CYODA_VERSION;
+  let canonical: unknown;
+  let warnings: string[];
+  try {
+    const result = getDialect(version).toCanonical({
+      workflows: outerResult.data.session.workflows,
+    });
+    canonical = result.value;
+    warnings = result.warnings;
+  } catch (e) {
+    return {
+      ok: false,
+      issues: [
+        {
+          severity: "error",
+          code: "operator-alias-conflict",
+          message: (e as Error).message,
+        },
+      ],
+    };
+  }
+
+  // Mirror the dialect's dropped-key notes into `issues` — the surface every
+  // consumer already renders. `warnings` stays as-is: public API.
+  const warningIssues = warnings.map(dialectWarningToIssue);
+
   const inner = ImportPayloadSchema.omit({ importMode: true }).extend({
     importMode: z.enum(["MERGE", "REPLACE", "ACTIVATE"]),
   });
   const sessionResult = inner.safeParse({
     importMode: outerResult.data.session.importMode,
-    workflows: (aliased as { workflows: unknown }).workflows,
+    allowCycles: outerResult.data.session.allowCycles,
+    workflows: (canonical as { workflows: unknown }).workflows,
   });
   if (!sessionResult.success) {
-    return { ok: false, issues: zodErrorToIssues(sessionResult.error) };
+    return {
+      ok: false,
+      issues: [...zodErrorToIssues(sessionResult.error), ...warningIssues],
+      ...(warnings.length > 0 ? { warnings } : {}),
+    };
   }
 
   const normalizedWorkflows = sessionResult.data.workflows.map(normalizeWorkflowInput);
   const session = {
     entity: outerResult.data.session.entity,
     importMode: sessionResult.data.importMode,
+    ...(sessionResult.data.allowCycles !== undefined
+      ? { allowCycles: sessionResult.data.allowCycles }
+      : {}),
     workflows: normalizedWorkflows,
   };
 
@@ -69,8 +104,14 @@ export function parseEditorDocument(
     outerResult.data.meta as WorkflowEditorDocument["meta"],
   );
   const document: WorkflowEditorDocument = { session, meta };
-  const issues = validateSemantics(session, document);
+  const issues = [...validateSemantics(session, document), ...warningIssues];
   const hasError = issues.some((i) => i.severity === "error");
 
-  return { ok: !hasError, document, value: document, issues };
+  return {
+    ok: !hasError,
+    document,
+    value: document,
+    issues,
+    ...(warnings.length > 0 ? { warnings } : {}),
+  };
 }

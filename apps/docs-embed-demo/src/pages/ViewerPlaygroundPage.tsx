@@ -61,6 +61,7 @@ export function ViewerPlaygroundPage() {
       text: draftJson,
       document: nextParse.document,
       issues: nextParse.issues,
+      notices: nextParse.notices,
     });
     setSelectedGraphId(null);
     setApplyError(null);

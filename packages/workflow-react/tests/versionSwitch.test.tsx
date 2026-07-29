@@ -6,7 +6,7 @@ afterEach(cleanup);
 
 const sampleWorkflows = [
   {
-    version: "1.0",
+    version: "1.3",
     name: "wf",
     initialState: "s",
     active: true,

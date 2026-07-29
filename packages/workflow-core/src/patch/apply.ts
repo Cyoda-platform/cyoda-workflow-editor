@@ -8,6 +8,22 @@ import type { Workflow } from "../types/workflow.js";
 import { validateSemantics } from "../validate/semantic.js";
 import type { ValidationIssue } from "../types/validation.js";
 
+// Exhaustiveness guard for the "replaceSession" case below: it assigns each
+// WorkflowSession field by name rather than delegating to Object.assign (see
+// that case's comment for why), so nothing statically forces every field to
+// be handled. `allowCycles` was silently dropped once already by exactly
+// this class of bug. If a field is added to WorkflowSession without also
+// being added to the exclusion list below, this type resolves to `never`,
+// and the assignment two lines down fails to compile ("Type 'true' is not
+// assignable to type 'never'") — surfacing the gap at the next `tsc` run
+// instead of at runtime.
+type _AllSessionFieldsHandled =
+  Exclude<keyof WorkflowSession, "entity" | "importMode" | "workflows" | "allowCycles"> extends never
+    ? true
+    : never;
+const _allSessionFieldsHandled: _AllSessionFieldsHandled = true;
+void _allSessionFieldsHandled;
+
 /**
  * Apply a patch to a document, returning a new document.
  * - Refreshes synthetic IDs for the new session.
@@ -243,9 +259,21 @@ export function applyPatch(
         draft.entity = patch.entity;
         return;
       case "replaceSession":
-        draft.workflows = patch.session.workflows;
-        draft.importMode = patch.session.importMode;
+        // Replace every field of WorkflowSession explicitly (entity,
+        // importMode, workflows, allowCycles) — a prior version of this case
+        // copied only three of the four fields and silently dropped
+        // `allowCycles` on every JSON-surface edit. `allowCycles` is optional
+        // and must be *cleared*, not merely left unset, when the incoming
+        // session omits it (Object.assign would skip a missing key and leave
+        // a stale `true` in place).
         draft.entity = patch.session.entity;
+        draft.importMode = patch.session.importMode;
+        draft.workflows = patch.session.workflows;
+        if (patch.session.allowCycles === undefined) {
+          delete draft.allowCycles;
+        } else {
+          draft.allowCycles = patch.session.allowCycles;
+        }
         return;
     }
   });

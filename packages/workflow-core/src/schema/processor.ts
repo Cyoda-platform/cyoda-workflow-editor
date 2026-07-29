@@ -11,25 +11,27 @@ export const ExecutionModeSchema = z.enum([
 ]);
 
 export const ExternalizedProcessorSchema = z.object({
-  type: z.literal("externalized"),
+  // Open string: cyoda-go 0.8.3 stores and returns `type` verbatim for every
+  // value. A literal here cannot parse the server's own exports.
+  type: z.string(),
   name: NameSchema,
   executionMode: ExecutionModeSchema.optional(),
-  startNewTxOnDispatch: z.boolean().optional(),
   annotations: AnnotationsSchema.optional(),
   config: FunctionConfigSchema.and(
     z.object({
       asyncResult: z.boolean().optional(),
+      // Kept `.nonnegative()` here (not relaxed per the brief's snippet) —
+      // that constraint is verified server behaviour and
+      // tests/processor/processor-contract.test.ts asserts -1 is an error.
       crossoverToAsyncMs: z.number().int().nonnegative().optional(),
+      startNewTxOnDispatch: z.boolean().optional(),
     }),
   ).optional(),
 });
 
 /**
- * The canonical processor schema. As of the v0.8 major bump the `scheduled`
- * processor type (an unsupported v0.7 platform hack) has been removed, leaving
- * `externalized` as the only processor type — which matches the v0.8.0 wire
- * format exactly. Kept as the dedicated processor schema rather than aliasing
- * `ExternalizedProcessorSchema` directly so future processor types can rejoin a
- * discriminated union here without churning consumers.
+ * The canonical processor schema. `type` is an open string (see above) because
+ * cyoda-go 0.8.3 round-trips whatever value it was given; non-canonical values
+ * are surfaced as validation warnings rather than rejected or rewritten.
  */
 export const ProcessorSchema = ExternalizedProcessorSchema;
