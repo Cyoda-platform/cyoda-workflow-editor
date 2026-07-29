@@ -27,8 +27,10 @@ describe("processor type is preserved verbatim (spec §1)", () => {
   );
 
   test("warns on a non-canonical type", () => {
-    const codes = parse("SCHEDULED").issues.map((i) => i.code);
-    expect(codes).toContain("processor-type-non-canonical");
+    const issue = parse("SCHEDULED").issues.find(
+      (i) => i.code === "processor-type-non-canonical",
+    );
+    expect(issue?.severity).toBe("warning");
   });
 
   test("warns specifically about internalized failing at dispatch", () => {
@@ -42,5 +44,21 @@ describe("processor type is preserved verbatim (spec §1)", () => {
   test("an empty type is canonical and warns about neither", () => {
     const codes = parse("").issues.map((i) => i.code);
     expect(codes).not.toContain("processor-type-non-canonical");
+  });
+
+  test("crossover-without-async-result fires regardless of type, including canonical empty", () => {
+    const raw = JSON.stringify({
+      importMode: "MERGE",
+      workflows: [{
+        version: "1.3", name: "w", initialState: "A", active: true,
+        states: { A: { transitions: [{
+          name: "t", next: "A", manual: true,
+          processors: [{ type: "", name: "p", config: { crossoverToAsyncMs: 100 } }],
+        }] } },
+      }],
+    });
+    const parsed = parseImportPayload(raw);
+    const issue = parsed.issues.find((i) => i.code === "crossover-without-async-result");
+    expect(issue?.severity).toBe("warning");
   });
 });

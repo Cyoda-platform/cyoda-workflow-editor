@@ -88,19 +88,22 @@ function isNonCanonicalType(type: string): boolean {
   return type !== "externalized" && type !== "";
 }
 
+const JSON_EDITOR_ESCAPE_HATCH =
+  `Shown read-only to avoid guessing at fields this type may not actually support. To edit it ` +
+  `anyway, switch to the JSON view, which edits the workflow directly.`;
+
 function nonCanonicalTypeMessage(type: string): string {
   if (type === "internalized") {
     return (
       `This processor uses the reserved type "internalized". cyoda-go accepts it at import ` +
       `but rejects it at dispatch with WORKFLOW_FAILED, so any transition firing this ` +
-      `processor will fail at runtime. Shown read-only to avoid guessing at fields this type ` +
-      `may not actually support.`
+      `processor will fail at runtime. ${JSON_EDITOR_ESCAPE_HATCH}`
     );
   }
   return (
     `This processor has a non-canonical type "${type}". cyoda-go accepts it today and treats ` +
     `it as externalized, but this permissiveness is documented as narrowing in a future ` +
-    `release. Shown read-only to avoid guessing at fields this type may not actually support.`
+    `release. ${JSON_EDITOR_ESCAPE_HATCH}`
   );
 }
 
@@ -636,7 +639,9 @@ const chipStyle = {
   borderRadius: radii.pill,
   background: colors.borderSubtle,
   color: colors.textSecondary,
-  textTransform: "lowercase" as const,
+  // No textTransform: a preserved type (e.g. "EXTERNAL") must render exactly
+  // as stored — lowercasing it here would misrepresent the value elsewhere in
+  // the UI, contradicting the point of preserving it verbatim.
 };
 
 const summaryCardStyle = {

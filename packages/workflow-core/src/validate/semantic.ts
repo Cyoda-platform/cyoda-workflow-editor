@@ -192,7 +192,7 @@ function validateWorkflow(
               ...transitionTargetId(doc, wf.name, stateCode, index),
             });
           }
-          if (p.type === "externalized" && p.config) {
+          if (p.config) {
             if (
               p.config.crossoverToAsyncMs !== undefined &&
               p.config.asyncResult !== true
