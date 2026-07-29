@@ -23,6 +23,12 @@ import {
 import { AnnotationsField } from "./AnnotationsField.js";
 import type { Selection } from "../state/types.js";
 
+// `ScheduleFunction` itself isn't re-exported from @cyoda/workflow-core's
+// public surface (only `TransitionSchedule` is) — derive it structurally
+// rather than touching workflow-core's export list, which is out of scope
+// for this task.
+type ScheduleFunction = NonNullable<TransitionSchedule["function"]>;
+
 export function TransitionForm({
   workflow,
   stateCode,
@@ -62,6 +68,11 @@ export function TransitionForm({
   const [scheduleTimeoutDraft, setScheduleTimeoutDraft] = useState<string>(
     transition.schedule?.timeoutMs !== undefined ? String(transition.schedule.timeoutMs) : "",
   );
+  const [scheduleFunctionResponseTimeoutDraft, setScheduleFunctionResponseTimeoutDraft] = useState<string>(
+    transition.schedule?.function?.responseTimeoutMs !== undefined
+      ? String(transition.schedule.function.responseTimeoutMs)
+      : "",
+  );
   const prevTransitionUuidRef = useRef(transitionUuid);
   if (prevTransitionUuidRef.current !== transitionUuid) {
     prevTransitionUuidRef.current = transitionUuid;
@@ -70,6 +81,11 @@ export function TransitionForm({
     );
     setScheduleTimeoutDraft(
       transition.schedule?.timeoutMs !== undefined ? String(transition.schedule.timeoutMs) : "",
+    );
+    setScheduleFunctionResponseTimeoutDraft(
+      transition.schedule?.function?.responseTimeoutMs !== undefined
+        ? String(transition.schedule.function.responseTimeoutMs)
+        : "",
     );
   }
 
@@ -121,6 +137,14 @@ export function TransitionForm({
     update({ schedule: next });
   };
 
+  // Shared between both schedule modes. Spreads the previous schedule rather
+  // than rebuilding fresh, but only ever touches the `timeoutMs` key — it
+  // must never invent a `delayMs` (that was a pre-existing defect: this path
+  // used to write `delayMs: transition.schedule?.delayMs ?? 1` unconditionally,
+  // which broke the delayMs/function XOR whenever the current mode was
+  // "function"). `0` is deliberately accepted: the strictest legal setting
+  // ("drop on any lateness"), not an error — same for negative values, which
+  // the server also accepts (see TransitionScheduleSchema).
   const commitScheduleTimeout = (raw: string) => {
     const trimmed = raw.trim();
     if (trimmed.length === 0) {
@@ -131,9 +155,73 @@ export function TransitionForm({
       return;
     }
     const parsed = Number(trimmed);
-    if (!Number.isInteger(parsed) || parsed <= 0) return;
-    const next: TransitionSchedule = { ...transition.schedule, delayMs: transition.schedule?.delayMs ?? 1, timeoutMs: parsed };
+    if (!Number.isInteger(parsed)) return;
+    const next: TransitionSchedule = { ...transition.schedule, timeoutMs: parsed };
     update({ schedule: next });
+  };
+
+  // Writes a fresh function-mode schedule (never spreads the previous
+  // schedule object), so a leftover `delayMs` from static mode can never
+  // survive into a function-mode edit. `timeoutMs` is shared and carried
+  // across explicitly.
+  const writeScheduleFunction = (nextFn: ScheduleFunction) => {
+    const next: TransitionSchedule = {
+      function: nextFn,
+      ...(transition.schedule?.timeoutMs !== undefined ? { timeoutMs: transition.schedule.timeoutMs } : {}),
+    };
+    update({ schedule: next });
+  };
+
+  const commitScheduleFunctionName = (raw: string) => {
+    const currentFn = transition.schedule?.function;
+    if (!currentFn) return;
+    writeScheduleFunction({ ...currentFn, name: raw.trim() });
+  };
+
+  const commitScheduleFunctionTags = (raw: string) => {
+    const currentFn = transition.schedule?.function;
+    if (!currentFn) return;
+    writeScheduleFunction({ ...currentFn, calculationNodesTags: raw });
+  };
+
+  // Tri-state: "" clears attachEntity entirely (server default: true),
+  // "true"/"false" write an explicit boolean. A plain checkbox cannot
+  // represent this — an absent attachEntity is not the same as false.
+  const commitScheduleFunctionAttachEntity = (raw: "" | "true" | "false") => {
+    const currentFn = transition.schedule?.function;
+    if (!currentFn) return;
+    const nextFn: ScheduleFunction = { ...currentFn };
+    if (raw === "") delete nextFn.attachEntity;
+    else nextFn.attachEntity = raw === "true";
+    writeScheduleFunction(nextFn);
+  };
+
+  const commitScheduleFunctionContext = (raw: string) => {
+    const currentFn = transition.schedule?.function;
+    if (!currentFn) return;
+    const nextFn: ScheduleFunction = { ...currentFn };
+    if (raw.trim().length > 0) nextFn.context = raw;
+    else delete nextFn.context;
+    writeScheduleFunction(nextFn);
+  };
+
+  // No lower bound: the server accepts any integer, including negatives
+  // (verified — see ScheduleFunctionSchema's comment on responseTimeoutMs).
+  const commitScheduleFunctionResponseTimeout = (raw: string) => {
+    const currentFn = transition.schedule?.function;
+    if (!currentFn) return;
+    const trimmed = raw.trim();
+    if (trimmed.length === 0) {
+      if (currentFn.responseTimeoutMs !== undefined) {
+        const nextFn: ScheduleFunction = { ...currentFn };
+        delete nextFn.responseTimeoutMs;
+        writeScheduleFunction(nextFn);
+      }
+      return;
+    }
+    const parsed = Number(trimmed);
+    if (!Number.isInteger(parsed)) return;
+    writeScheduleFunction({ ...currentFn, responseTimeoutMs: parsed });
   };
 
   const allStateNames = Object.keys(workflow.states);
@@ -354,12 +442,16 @@ export function TransitionForm({
             data-testid="inspector-transition-schedule-enabled"
             onChange={(e) => {
               if (e.target.checked) {
+                // Enabling always defaults to static mode with a minimal
+                // delay; the mode control below governs the shape from here.
                 setScheduleDelayDraft("1");
                 setScheduleTimeoutDraft("");
+                setScheduleFunctionResponseTimeoutDraft("");
                 update({ schedule: { delayMs: 1 } });
               } else {
                 setScheduleDelayDraft("");
                 setScheduleTimeoutDraft("");
+                setScheduleFunctionResponseTimeoutDraft("");
                 update({ schedule: undefined });
               }
             }}
@@ -368,39 +460,164 @@ export function TransitionForm({
         </label>
 
         {transition.schedule !== undefined && (
-          <div style={twoColStyle}>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: colors.textSecondary }}>
-              <span style={{ fontWeight: 500 }}>Delay (ms)</span>
-              <input
-                type="text"
-                value={scheduleDelayDraft}
+          <>
+            <div role="radiogroup" aria-label="Schedule mode" style={{ display: "flex", gap: 8 }}>
+              <button
+                type="button"
+                data-testid="inspector-transition-schedule-mode-static"
+                aria-pressed={transition.schedule.function === undefined}
                 disabled={disabled}
-                data-testid="inspector-transition-schedule-delay"
-                style={scheduleInputStyle}
-                onChange={(e) => setScheduleDelayDraft(e.target.value)}
-                onBlur={(e) => commitScheduleDelay(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                style={
+                  transition.schedule.function === undefined
+                    ? { ...ghostBtn, background: colors.infoBg, borderColor: colors.info, color: colors.info }
+                    : ghostBtn
+                }
+                onClick={() => {
+                  // Fresh schedule object: never spreads the previous
+                  // (function-mode) schedule, so `function` cannot survive
+                  // the switch — the server rejects both fields present.
+                  setScheduleDelayDraft("1");
+                  setScheduleFunctionResponseTimeoutDraft("");
+                  update({
+                    schedule: {
+                      delayMs: 1,
+                      ...(transition.schedule?.timeoutMs !== undefined
+                        ? { timeoutMs: transition.schedule.timeoutMs }
+                        : {}),
+                    },
+                  });
                 }}
-              />
-            </label>
+              >
+                Static delay
+              </button>
+              <button
+                type="button"
+                data-testid="inspector-transition-schedule-mode-function"
+                aria-pressed={transition.schedule.function !== undefined}
+                disabled={disabled}
+                style={
+                  transition.schedule.function !== undefined
+                    ? { ...ghostBtn, background: colors.infoBg, borderColor: colors.info, color: colors.info }
+                    : ghostBtn
+                }
+                onClick={() => {
+                  // Fresh schedule object: never spreads the previous
+                  // (static-mode) schedule, so `delayMs` cannot survive the
+                  // switch — the server rejects both fields present.
+                  setScheduleFunctionResponseTimeoutDraft("");
+                  update({
+                    schedule: {
+                      function: { name: "", resultKind: "Schedule", calculationNodesTags: "" },
+                      ...(transition.schedule?.timeoutMs !== undefined
+                        ? { timeoutMs: transition.schedule.timeoutMs }
+                        : {}),
+                    },
+                  });
+                }}
+              >
+                Function
+              </button>
+            </div>
 
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: colors.textSecondary }}>
-              <span style={{ fontWeight: 500 }}>Timeout (ms)</span>
-              <input
-                type="text"
-                value={scheduleTimeoutDraft}
-                disabled={disabled}
-                data-testid="inspector-transition-schedule-timeout"
-                style={scheduleInputStyle}
-                onChange={(e) => setScheduleTimeoutDraft(e.target.value)}
-                onBlur={(e) => commitScheduleTimeout(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                }}
-              />
-            </label>
-          </div>
+            <div style={twoColStyle}>
+              {transition.schedule.function === undefined && (
+                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: colors.textSecondary }}>
+                  <span style={{ fontWeight: 500 }}>Delay (ms)</span>
+                  <input
+                    type="text"
+                    value={scheduleDelayDraft}
+                    disabled={disabled}
+                    data-testid="inspector-transition-schedule-delay"
+                    style={scheduleInputStyle}
+                    onChange={(e) => setScheduleDelayDraft(e.target.value)}
+                    onBlur={(e) => commitScheduleDelay(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                    }}
+                  />
+                </label>
+              )}
+
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: colors.textSecondary }}>
+                <span style={{ fontWeight: 500 }}>Timeout (ms)</span>
+                <input
+                  type="text"
+                  value={scheduleTimeoutDraft}
+                  disabled={disabled}
+                  data-testid="inspector-transition-schedule-timeout"
+                  style={scheduleInputStyle}
+                  onChange={(e) => setScheduleTimeoutDraft(e.target.value)}
+                  onBlur={(e) => commitScheduleTimeout(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                  }}
+                />
+              </label>
+            </div>
+
+            {transition.schedule.function !== undefined && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <TextField
+                  label="Function name"
+                  value={transition.schedule.function.name}
+                  disabled={disabled}
+                  testId="inspector-transition-schedule-function-name"
+                  onCommit={commitScheduleFunctionName}
+                />
+                <TextField
+                  label="Calculation node tags"
+                  value={transition.schedule.function.calculationNodesTags}
+                  disabled={disabled}
+                  testId="inspector-transition-schedule-function-tags"
+                  onCommit={commitScheduleFunctionTags}
+                />
+                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: colors.textSecondary }}>
+                  <span style={{ fontWeight: 500 }}>Attach entity</span>
+                  <CustomSelectInput
+                    value={
+                      transition.schedule.function.attachEntity === undefined
+                        ? ""
+                        : transition.schedule.function.attachEntity
+                          ? "true"
+                          : "false"
+                    }
+                    options={[
+                      { value: "" as const, label: "Default (true)" },
+                      { value: "true" as const, label: "True" },
+                      { value: "false" as const, label: "False" },
+                    ]}
+                    disabled={disabled}
+                    testId="inspector-transition-schedule-function-attach-entity"
+                    onChange={commitScheduleFunctionAttachEntity}
+                    small
+                  />
+                </label>
+                <TextField
+                  label="Context"
+                  value={transition.schedule.function.context ?? ""}
+                  disabled={disabled}
+                  multiline
+                  testId="inspector-transition-schedule-function-context"
+                  onCommit={commitScheduleFunctionContext}
+                />
+                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: colors.textSecondary }}>
+                  <span style={{ fontWeight: 500 }}>Response timeout (ms)</span>
+                  <input
+                    type="text"
+                    value={scheduleFunctionResponseTimeoutDraft}
+                    disabled={disabled}
+                    data-testid="inspector-transition-schedule-function-response-timeout"
+                    style={scheduleInputStyle}
+                    onChange={(e) => setScheduleFunctionResponseTimeoutDraft(e.target.value)}
+                    onBlur={(e) => commitScheduleFunctionResponseTimeout(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                    }}
+                  />
+                </label>
+              </div>
+            )}
+          </>
         )}
 
         <p
@@ -416,8 +633,8 @@ export function TransitionForm({
           }}
           data-testid="inspector-transition-schedule-notice"
         >
-          Scheduled transitions can be configured but are not yet executed by the workflow engine.
-          Firing a scheduled transition currently returns 400 BAD_REQUEST.
+          A scheduled transition fires on its own. Firing it manually by name returns 400 — give
+          the state an ordinary manual transition if you need early firing.
         </p>
       </TransitionSection>
 
@@ -650,7 +867,9 @@ const processorTypeChipStyle = {
   borderRadius: 999,
   background: colors.borderSubtle,
   color: colors.textSecondary,
-  textTransform: "lowercase" as const,
+  // No textTransform: a preserved type (e.g. "EXTERNAL") must render exactly
+  // as stored — lowercasing it here would misrepresent the value elsewhere in
+  // the UI, contradicting the point of preserving it verbatim.
 };
 
 const processorOrderStyle = {
