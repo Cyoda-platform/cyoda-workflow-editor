@@ -35,9 +35,17 @@ function parseOptionalInteger(value: string, label: string): { value?: number; e
 type ProcessorDraft = {
   type: string;
   name: string;
-  executionMode: ExecutionMode;
+  // "" means ABSENT, not a mode. The serializer preserves an absent
+  // executionMode (spec §4a) and the documented default at fire is SYNC, so
+  // the form must be able to represent "the source had none" without
+  // inventing a value on Apply.
+  executionMode: ExecutionMode | "";
   startNewTxOnDispatch: boolean;
-  attachEntity: boolean;
+  // Tri-state, mirroring TransitionForm's schedule.function.attachEntity:
+  // "" clears the key (server default: true), "true"/"false" write an explicit
+  // boolean. A checkbox cannot represent this, and collapsing an explicit
+  // `false` to absent inverts the user's setting.
+  attachEntity: "" | "true" | "false";
   calculationNodesTags: string;
   responseTimeoutMs: string;
   retryPolicy: string;
@@ -56,9 +64,14 @@ function toDraft(processor?: Processor): ProcessorDraft {
   return {
     type: processor?.type ?? "externalized",
     name: processor?.name ?? "",
-    executionMode: processor?.executionMode ?? "ASYNC_NEW_TX",
+    executionMode: processor?.executionMode ?? "",
     startNewTxOnDispatch: processor?.config?.startNewTxOnDispatch ?? false,
-    attachEntity: processor?.config?.attachEntity ?? false,
+    attachEntity:
+      processor?.config?.attachEntity === undefined
+        ? ""
+        : processor.config.attachEntity
+          ? "true"
+          : "false",
     calculationNodesTags: processor?.config?.calculationNodesTags ?? "",
     responseTimeoutMs:
       processor?.config?.responseTimeoutMs !== undefined
@@ -104,16 +117,16 @@ function toProcessor(draft: ProcessorDraft): Processor {
   const responseTimeout = parseOptionalInteger(draft.responseTimeoutMs, "Response timeout");
   const crossover = parseOptionalInteger(draft.crossoverToAsyncMs, "Crossover to async");
   const config: NonNullable<ExternalizedProcessor["config"]> = {};
-  if (draft.attachEntity) config.attachEntity = true;
+  if (draft.attachEntity !== "") config.attachEntity = draft.attachEntity === "true";
   const tags = normalizeTags(draft.calculationNodesTags);
   if (tags !== undefined) config.calculationNodesTags = tags;
   if (responseTimeout.value !== undefined) config.responseTimeoutMs = responseTimeout.value;
   if (draft.retryPolicy.trim().length > 0) config.retryPolicy = draft.retryPolicy.trim();
   if (draft.context.trim().length > 0) config.context = draft.context;
   if (draft.asyncResult) config.asyncResult = true;
-  if (draft.asyncResult && crossover.value !== undefined) {
-    config.crossoverToAsyncMs = crossover.value;
-  }
+  // Emitted independently of `asyncResult` (spec §4a): a document that parses
+  // with a `crossover-unsupported` warning must not lose the field on Apply.
+  if (crossover.value !== undefined) config.crossoverToAsyncMs = crossover.value;
   // cyoda-go 0.8.3 requires this INSIDE config, not on the processor.
   if (draft.executionMode === "COMMIT_BEFORE_DISPATCH" && draft.startNewTxOnDispatch) {
     config.startNewTxOnDispatch = true;
@@ -126,7 +139,8 @@ function toProcessor(draft: ProcessorDraft): Processor {
     // read in.
     type: draft.type,
     name: draft.name.trim(),
-    executionMode: draft.executionMode,
+    // Omitted when the source had none — see ProcessorDraft.executionMode.
+    ...(draft.executionMode !== "" ? { executionMode: draft.executionMode } : {}),
     ...(Object.keys(config).length > 0 ? { config } : {}),
     ...(draft.annotations !== undefined ? { annotations: draft.annotations } : {}),
   };
@@ -148,15 +162,16 @@ function validateDraft(
 
   const responseTimeout = parseOptionalInteger(draft.responseTimeoutMs, "Response timeout");
   if (responseTimeout.error) return responseTimeout.error;
-  if (draft.asyncResult) {
-    const crossover = parseOptionalInteger(draft.crossoverToAsyncMs, "Crossover to async");
-    if (crossover.error) return crossover.error;
-  }
+  // Validated regardless of `asyncResult`, because it is now emitted
+  // regardless of `asyncResult` (spec §4a).
+  const crossover = parseOptionalInteger(draft.crossoverToAsyncMs, "Crossover to async");
+  if (crossover.error) return crossover.error;
   return null;
 }
 
 export function summarizeProcessor(processor: Processor): string {
-  const parts: string[] = [processor.executionMode ?? "ASYNC_NEW_TX"];
+  // SYNC, not ASYNC_NEW_TX, is the documented default at fire (spec §4a).
+  const parts: string[] = [processor.executionMode ?? "SYNC"];
   if (processor.config?.calculationNodesTags) {
     parts.push(`tags ${processor.config.calculationNodesTags}`);
   }
@@ -239,12 +254,15 @@ export function ProcessorEditorModal({
           <FormField label="Execution mode">
             <CustomSelectInput
               value={draft.executionMode}
-              options={EXECUTION_MODES.map((mode) => ({ value: mode, label: mode }))}
+              options={[
+                { value: "", label: "Default (SYNC)" },
+                ...EXECUTION_MODES.map((mode) => ({ value: mode, label: mode })),
+              ]}
               disabled={fieldsDisabled}
               onChange={(next) =>
                 setDraft((current) => ({
                   ...current,
-                  executionMode: next as ExecutionMode,
+                  executionMode: next as ExecutionMode | "",
                   // startNewTxOnDispatch is only valid for COMMIT_BEFORE_DISPATCH.
                   startNewTxOnDispatch:
                     next === "COMMIT_BEFORE_DISPATCH" ? current.startNewTxOnDispatch : false,
@@ -274,17 +292,27 @@ export function ProcessorEditorModal({
             <span>Start new transaction on dispatch</span>
           </label>
 
-          <label style={checkboxRowStyle}>
-            <input
-              type="checkbox"
-              checked={draft.attachEntity}
+          <FormField label="Attach entity">
+            {/* Three options, not a checkbox: absent means `true` to the
+                server, so an explicit `false` must be distinguishable from
+                "not set" — same shape as TransitionForm's schedule function. */}
+            <CustomSelectInput
+              value={draft.attachEntity}
+              options={[
+                { value: "" as const, label: "Default (true)" },
+                { value: "true" as const, label: "True" },
+                { value: "false" as const, label: "False" },
+              ]}
               disabled={fieldsDisabled}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, attachEntity: event.target.checked }))
+              onChange={(next) =>
+                setDraft((current) => ({
+                  ...current,
+                  attachEntity: next as "" | "true" | "false",
+                }))
               }
+              testId="processor-attach-entity"
             />
-            <span>Attach entity</span>
-          </label>
+          </FormField>
 
           <FormField label="Calculation node tags">
             <input

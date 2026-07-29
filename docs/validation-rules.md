@@ -13,9 +13,20 @@ code is added or removed without updating this file.
 
 **Severity meaning**
 
-- **error** — the workflow is invalid or the engine will reject it; block save.
-- **warning** — the engine accepts it, but it's almost certainly a mistake.
+- **error** — the workflow is invalid, or *every* supported backend will reject
+  it; block save.
+- **warning** — one of two things: the engine accepts it but it's almost
+  certainly a mistake, **or** it is backend-conditional — cyoda-go rejects it
+  while Cyoda Cloud accepts and honours it. The second kind (today:
+  `async-result-unsupported`, `crossover-unsupported`) is deliberately *not* an
+  error: a user targeting Cyoda Cloud is writing a valid document and must not
+  be blocked, and the field must still round-trip. The message names the
+  backend split explicitly.
 - **info** — a neutral observation or a soft heuristic; never alarming.
+
+A rule is an **error** only when no supported backend accepts the document, or
+when the editor's own model cannot represent it. Anything that hinges on
+*which* backend the user is targeting is a warning.
 
 ## Errors
 
@@ -41,6 +52,7 @@ code is added or removed without updating this file.
 | `schedule-function-incomplete` | transition | yes | `schedule.function` is missing `name` or `calculationNodesTags`. |
 | `workflow-schema-version-malformed` | workflow | yes | The in-document `version` tag is not `MAJOR.MINOR`, uses an unsupported major, or exceeds the max minor the target server accepts. |
 | `unknown-retry-policy` | processor | yes | Processor `config.retryPolicy` is outside `NONE` / `FIXED` / empty; cyoda-go hard-400s on anything else. |
+| `start-new-tx-without-commit-before-dispatch` | processor | yes | `startNewTxOnDispatch` is set but the mode is not `COMMIT_BEFORE_DISPATCH`. |
 | `schema-*` | varies | — | A canonical Zod schema check failed; the suffix is the Zod issue code. |
 
 ## Warnings
@@ -51,7 +63,6 @@ code is added or removed without updating this file.
 | `unsupported-operator` | criterion | — | A known operator the engine does not implement. |
 | `unsupported-group-operator` | criterion | — | Group operator `NOT` is not implemented by the engine. |
 | `not-with-multiple-conditions` | criterion | — | A `NOT` group carries more than one condition. |
-| `start-new-tx-without-commit-before-dispatch` | processor | yes | `startNewTxOnDispatch` is set but the mode is not `COMMIT_BEFORE_DISPATCH`. |
 | `async-result-unsupported` | processor | yes | `config.asyncResult` is `true`; rejected by cyoda-go, supported on Cyoda Cloud only. |
 | `crossover-unsupported` | processor | yes | `config.crossoverToAsyncMs` is set; rejected by cyoda-go, supported on Cyoda Cloud only. |
 | `processor-type-internalized` | processor | yes | Processor `type` is the reserved value `"internalized"`; cyoda-go accepts it at import but rejects it at dispatch. |

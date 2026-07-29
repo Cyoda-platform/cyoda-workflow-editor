@@ -241,4 +241,37 @@ describe("projectToGraph", () => {
     const edge = graph.edges.find((e) => e.kind === "transition");
     expect(edge && edge.kind === "transition" && edge.summary.execution?.kind).toBe("sync");
   });
+
+  // Spec §4a: the documented default at fire is SYNC, not ASYNC_NEW_TX, and the
+  // serializer now preserves an absent executionMode instead of fabricating
+  // one. A processor with no mode must therefore get the "sync" badge.
+  test("a processor with no executionMode gets the sync badge (SYNC is the default at fire)", () => {
+    const graph = project({
+      importMode: "MERGE",
+      workflows: [
+        {
+          version: "1.3",
+          name: "wf",
+          initialState: "a",
+          active: true,
+          states: {
+            a: {
+              transitions: [
+                {
+                  name: "process",
+                  next: "b",
+                  manual: false,
+                  disabled: false,
+                  processors: [{ type: "externalized", name: "p" }],
+                },
+              ],
+            },
+            b: { transitions: [] },
+          },
+        },
+      ],
+    });
+    const edge = graph.edges.find((e) => e.kind === "transition");
+    expect(edge && edge.kind === "transition" && edge.summary.execution?.kind).toBe("sync");
+  });
 });

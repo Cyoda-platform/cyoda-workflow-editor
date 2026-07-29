@@ -124,6 +124,7 @@ export const V0_8_WIRE_FIELDS = {
 } as const;
 
 const CONFIG_KEYS = new Set(PROCESSOR_CONFIG_FIELDS as readonly string[]);
+const PROCESSOR_KEYS = new Set(PROCESSOR_FIELDS as readonly string[]);
 
 /**
  * Reshape a raw 0.8.3 tree into what the canonical schema accepts:
@@ -133,15 +134,20 @@ const CONFIG_KEYS = new Set(PROCESSOR_CONFIG_FIELDS as readonly string[]);
  * - Strip `null`-valued optional keys. The server accepts `null` for nearly
  *   every optional field; Zod's `.optional()` rejects it. This is done
  *   shallowly, at each known level (workflow/state/transition/schedule/
- *   schedule.function/processor config), never recursively — criterion trees
- *   (`value: null` for IS_NULL/NOT_NULL) and `annotations`/
+ *   schedule.function/processor/processor config), never recursively —
+ *   criterion trees (`value: null` for IS_NULL/NOT_NULL) and `annotations`/
  *   `criterionAnnotations` (opaque client data) must never be touched.
+ *   Verified against 0.8.3: `type: null`, `executionMode: null` and
+ *   `annotations: null` on a processor are all accepted with a 200.
  * - Collapse a `null` state, or a `null`/absent `transitions` on a state, to
  *   the same default a transition-less state already gets (`StateSchema`
  *   defaults `transitions` to `[]`).
  * - Treat a `null` processor `config` as absent.
- * - Report discarded processor config keys. Zod strips unknown keys silently,
- *   which would turn an invalid processor into a quietly-emptied one.
+ * - Relocate a legacy processor-level `startNewTxOnDispatch` into `config`,
+ *   where cyoda-go 0.8.3 requires it.
+ * - Report discarded processor and processor-config keys. Zod strips unknown
+ *   keys silently, which would turn an invalid processor into a quietly-emptied
+ *   one.
  */
 function normalize08(value: unknown): { value: unknown; warnings: string[] } {
   const warnings: string[] = [];
@@ -194,25 +200,56 @@ function normalize08(value: unknown): { value: unknown; warnings: string[] } {
         if (Array.isArray(tx["processors"])) {
           tx["processors"] = (tx["processors"] as unknown[]).map((p) => {
             if (!isObj(p)) return p;
+            const rawConfig = p["config"];
+            // A `config` that is present but neither an object nor `null` is
+            // left untouched for Zod to reject.
+            if (rawConfig !== undefined && rawConfig !== null && !isObj(rawConfig)) return p;
+
+            const proc: Record<string, unknown> = { ...p };
             // `config: null` (the whole block) is treated as absent, same as
-            // every other optional key.
-            if (p["config"] === null) {
-              const { config: _config, ...rest } = p;
-              return rest;
+            // every other optional key — `stripNulls` below removes the key.
+            let cfg: Record<string, unknown> | undefined = isObj(rawConfig)
+              ? { ...rawConfig }
+              : undefined;
+
+            // Legacy-position migration. This library emitted
+            // `startNewTxOnDispatch` on the *processor object* for its entire
+            // history before 0.8.3, which requires it inside `config` and
+            // hard-400s the processor-level key ("unknown field"). Without
+            // this, every previously-saved COMMIT_BEFORE_DISPATCH processor
+            // would silently lose its transactional semantics on first open.
+            // Relocation is lossless: there is exactly one correct
+            // destination. A value already in `config` wins — the
+            // processor-level one is the legacy position.
+            if ("startNewTxOnDispatch" in proc) {
+              const legacy = proc["startNewTxOnDispatch"];
+              delete proc["startNewTxOnDispatch"];
+              if (legacy !== null && !(cfg !== undefined && "startNewTxOnDispatch" in cfg)) {
+                cfg = { ...(cfg ?? {}), startNewTxOnDispatch: legacy };
+              }
             }
-            if (!isObj(p["config"])) return p;
-            const cfg = p["config"] as Record<string, unknown>;
-            // Computed on the *original* keys, before null-stripping: an
-            // unknown key is unknown (and will be silently dropped by Zod)
-            // whether its value is null or not. A null value on a *known*
-            // key (e.g. `context: null`) is not a dropped key — see below.
-            const dropped = Object.keys(cfg).filter((k) => !CONFIG_KEYS.has(k));
-            if (dropped.length > 0) {
-              warnings.push(
-                `processor-config-keys-dropped:${String(p["name"])}:${dropped.join(",")}`,
-              );
+
+            // Dropped-key warnings are computed on the *original* keys, before
+            // null-stripping (an unknown key is unknown, and will be silently
+            // dropped by Zod, whether its value is null or not; a null value on
+            // a *known* key such as `context: null` is not a dropped key) but
+            // *after* the migration above, so the relocated field is not
+            // reported as dropped.
+            const name = String(proc["name"]);
+            const droppedProc = Object.keys(proc).filter((k) => !PROCESSOR_KEYS.has(k));
+            if (droppedProc.length > 0) {
+              warnings.push(`processor-keys-dropped:${name}:${droppedProc.join(",")}`);
             }
-            return { ...p, config: stripNulls(cfg) };
+            if (cfg !== undefined) {
+              const dropped = Object.keys(cfg).filter((k) => !CONFIG_KEYS.has(k));
+              if (dropped.length > 0) {
+                warnings.push(`processor-config-keys-dropped:${name}:${dropped.join(",")}`);
+              }
+            }
+
+            const out = stripNulls(proc);
+            if (cfg !== undefined) out["config"] = stripNulls(cfg);
+            return out;
           });
         }
         return tx;

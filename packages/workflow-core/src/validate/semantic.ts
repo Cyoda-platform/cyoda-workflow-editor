@@ -346,9 +346,12 @@ function validateWorkflow(
         // explicitly null is not a mode. This block runs on the canonical
         // model, which can arrive via `applyPatch` (a `Partial<Transition>`
         // that bypasses Zod) as well as the parse path, so it can't assume
-        // Zod already ruled out `null`/missing string fields.
+        // Zod already ruled out `null`/missing string fields — nor that the
+        // dialect's `delayMs <= 0` drop has run. cyoda-go's own presence test
+        // is `> 0`, so a `delayMs: 0` reaching here via applyPatch is zero
+        // modes to the server and must be zero modes here too.
         const modes = [
-          t.schedule.delayMs !== undefined && t.schedule.delayMs !== null,
+          typeof t.schedule.delayMs === "number" && t.schedule.delayMs > 0,
           t.schedule.function !== undefined && t.schedule.function !== null,
         ].filter(Boolean).length;
         if (modes !== 1) {
@@ -831,7 +834,12 @@ function automatedOrderingRules(
         }
       });
 
-      const nullIdx = automated.findIndex(({ t }) => t.criterion === undefined);
+      // `== null` rather than `=== undefined`: `validateSemantics` is public
+      // API and `validateAfterPatch` calls it with zero normalization, so an
+      // explicit `criterion: null` (what the server emits, and what a
+      // hand-edited document carries) must count as unguarded here exactly as
+      // it does in `findUnguardedCycles`, which asks the same question.
+      const nullIdx = automated.findIndex(({ t }) => t.criterion == null);
       if (nullIdx === -1 || nullIdx === automated.length - 1) continue;
 
       const nullEntry = automated[nullIdx]!;

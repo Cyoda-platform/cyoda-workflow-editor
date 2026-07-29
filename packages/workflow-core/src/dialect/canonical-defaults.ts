@@ -2,8 +2,9 @@
  * Pre-schema coercion shared by every dialect. Runs before Zod validation on the
  * raw parsed value so the schema stays unchanged and round-trip semantics hold.
  *
- * Fills an ABSENT processor `type` with `"externalized"` — the server's own
- * documented default, so this is not lossy. Present values are never rewritten:
+ * Fills an ABSENT (or `null`) processor `type` with `"externalized"` — the
+ * server's own documented default, so this is not lossy. Present values are
+ * never rewritten:
  * cyoda-go 0.8.3 stores and returns `type` verbatim (`"EXTERNAL"`, `"SCHEDULED"`,
  * `""`, `"internalized"`), and rewriting one would discard user data.
  */
@@ -41,8 +42,13 @@ export function coerceCanonicalDefaults(value: unknown): unknown {
                 if (!isObj(p)) return p;
                 const proc = p as Record<string, unknown>;
                 // Present `type` is preserved verbatim — see doc comment.
-                if (typeof proc["type"] === "string") return p;
-                return { type: "externalized", ...proc };
+                // `null` counts as absent (cyoda-go accepts `type: null` at
+                // import with a 200); the trailing spread would otherwise put
+                // the null straight back and the dialect's own null-stripping
+                // runs after this pass, leaving `type` required-but-missing.
+                if (proc["type"] !== undefined && proc["type"] !== null) return p;
+                const { type: _type, ...rest } = proc;
+                return { type: "externalized", ...rest };
               }),
             };
           }),

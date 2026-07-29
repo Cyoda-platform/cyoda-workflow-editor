@@ -15,4 +15,5 @@ Support cyoda-go 0.8.3 (workflow schema 1.3).
   format. It was emitted at processor level, which 0.8.3 rejects with a 400.
 - **Breaking:** processor `type` is a preserved string rather than the literal
   `"externalized"`, because cyoda-go round-trips it verbatim.
-- Fixes five round-trip defects that silently dropped processor config data.
+- Fixes five round-trip defects that silently dropped, invented, or
+  over-constrained processor config data.

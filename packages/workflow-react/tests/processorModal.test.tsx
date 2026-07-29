@@ -234,6 +234,123 @@ describe("processor modal UX", () => {
   });
 });
 
+// Spec §4a fixed these three in the serializer; the modal re-introduced them on
+// the edit path, where opening and Applying a processor is enough to trigger
+// them. Each test edits nothing but the name, so the assertion is purely about
+// what an untouched round-trip through the form preserves.
+describe("processor modal round-trip fidelity (spec §4a)", () => {
+  const openEditAndApply = (onDispatch: () => void) => {
+    fireEvent.click(screen.getByTestId("processor-edit-0"));
+    fireEvent.click(screen.getByTestId("processor-modal-apply"));
+    return onDispatch;
+  };
+
+  it("preserves an explicit attachEntity: false instead of collapsing it to absent", () => {
+    // Absent means `true` to the server, so dropping an explicit `false`
+    // inverts the user's setting. TransitionForm already models this as a
+    // three-option select for schedule.function.attachEntity.
+    const { onDispatch, processorUuids } = renderTransitionForm([
+      {
+        type: "externalized",
+        name: "notify",
+        executionMode: "SYNC",
+        config: { attachEntity: false },
+      },
+    ]);
+
+    openEditAndApply(onDispatch);
+    expect(onDispatch).toHaveBeenCalledWith({
+      op: "updateProcessor",
+      processorUuid: processorUuids[0],
+      updates: {
+        type: "externalized",
+        name: "notify",
+        executionMode: "SYNC",
+        config: { attachEntity: false },
+      },
+    });
+  });
+
+  it("keeps attachEntity absent when the source had none", () => {
+    const { onDispatch, processorUuids } = renderTransitionForm([
+      { type: "externalized", name: "notify", executionMode: "SYNC" },
+    ]);
+
+    openEditAndApply(onDispatch);
+    expect(onDispatch).toHaveBeenCalledWith({
+      op: "updateProcessor",
+      processorUuid: processorUuids[0],
+      updates: { type: "externalized", name: "notify", executionMode: "SYNC" },
+    });
+  });
+
+  it("offers attachEntity as a three-option select, not a checkbox", () => {
+    renderTransitionForm([
+      {
+        type: "externalized",
+        name: "notify",
+        executionMode: "SYNC",
+        config: { attachEntity: false },
+      },
+    ]);
+    fireEvent.click(screen.getByTestId("processor-edit-0"));
+    const select = screen.getByTestId("processor-attach-entity") as HTMLSelectElement;
+    expect(Array.from(select.options).map((o) => o.value)).toEqual(["", "true", "false"]);
+    expect(select.value).toBe("false");
+  });
+
+  it("keeps crossoverToAsyncMs when asyncResult is not set", () => {
+    // A document that parses with a `crossover-unsupported` warning (the field
+    // set, asyncResult absent) currently loses the field on the next Apply.
+    const { onDispatch, processorUuids } = renderTransitionForm([
+      {
+        type: "externalized",
+        name: "notify",
+        executionMode: "SYNC",
+        config: { crossoverToAsyncMs: 500 },
+      },
+    ]);
+
+    openEditAndApply(onDispatch);
+    expect(onDispatch).toHaveBeenCalledWith({
+      op: "updateProcessor",
+      processorUuid: processorUuids[0],
+      updates: {
+        type: "externalized",
+        name: "notify",
+        executionMode: "SYNC",
+        config: { crossoverToAsyncMs: 500 },
+      },
+    });
+  });
+
+  it("does not fabricate an executionMode for a processor that had none", () => {
+    // The serializer stopped inventing ASYNC_NEW_TX; SYNC is the documented
+    // default at fire, so inventing a mode here both adds data and adds the
+    // wrong value.
+    const { onDispatch, processorUuids } = renderTransitionForm([
+      { type: "externalized", name: "notify", config: { calculationNodesTags: "a" } },
+    ]);
+
+    openEditAndApply(onDispatch);
+    expect(onDispatch).toHaveBeenCalledWith({
+      op: "updateProcessor",
+      processorUuid: processorUuids[0],
+      updates: {
+        type: "externalized",
+        name: "notify",
+        config: { calculationNodesTags: "a" },
+      },
+    });
+  });
+
+  it("summarizes an absent executionMode as SYNC, the default at fire", () => {
+    renderTransitionForm([{ type: "externalized", name: "notify" }]);
+    expect(screen.getByText(/SYNC/)).toBeTruthy();
+    expect(screen.queryByText(/ASYNC_NEW_TX/)).toBeNull();
+  });
+});
+
 describe("processor modal with a non-canonical type (spec §1, task-4)", () => {
   it("shows a SCHEDULED processor's fields instead of a blank form", () => {
     const { processorUuids } = renderTransitionForm([

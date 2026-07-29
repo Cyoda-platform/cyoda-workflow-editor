@@ -34,6 +34,19 @@ describe("schedule semantic rules (spec §4)", () => {
     expect(issue?.severity).toBe("error");
   });
 
+  test.each([0, -1])(
+    "flags delayMs: %s as zero modes — cyoda-go's presence test is `> 0`",
+    (delayMs) => {
+      // This rule exists for the applyPatch path, where the dialect's
+      // normalization (which drops a `delayMs <= 0`) has NOT run. Counting a
+      // non-positive delayMs as a mode makes the editor pass a document the
+      // server reads as mode-less and 400s.
+      const issues = issuesFor({ name: "t", next: "A", manual: false, schedule: { delayMs } });
+      const issue = issues.find((i) => i.code === "schedule-mode-required");
+      expect(issue?.severity).toBe("error");
+    },
+  );
+
   test("flags a schedule with both modes, as an error", () => {
     const issues = issuesFor({
       name: "t", next: "A", manual: false, schedule: { delayMs: 5, function: FN },

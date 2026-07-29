@@ -1,5 +1,10 @@
 import { describe, expect, test } from "vitest";
-import { parseEditorDocument, parseImportPayload, serializeEditorDocument } from "../../src/index.js";
+import {
+  parseEditorDocument,
+  parseImportPayload,
+  serializeEditorDocument,
+  serializeImportPayload,
+} from "../../src/index.js";
 
 function parse(transition: Record<string, unknown>) {
   return parseImportPayload(JSON.stringify({
@@ -114,6 +119,31 @@ describe("0.8 dialect normalization (spec §2)", () => {
     );
   });
 
+  test("warns when unknown processor-level keys are discarded", () => {
+    const parsed = parse({
+      name: "t", next: "A", manual: true,
+      processors: [{ type: "externalized", name: "p", delaySeconds: 300, transition: "retry" }],
+    });
+    expect(parsed.warnings ?? []).toContainEqual(
+      expect.stringContaining("processor-keys-dropped:p:delaySeconds,transition"),
+    );
+  });
+
+  test.each([
+    ["type", { type: null, name: "p", executionMode: "SYNC" }],
+    ["executionMode", { type: "externalized", name: "p", executionMode: null }],
+    ["annotations", { type: "externalized", name: "p", annotations: null }],
+  ])("strips a null processor %s (the server accepts all three with 200)", (_label, processor) => {
+    const parsed = parse({
+      name: "t", next: "A", manual: true, processors: [processor],
+    });
+    expect(parsed.issues.filter((i) => i.severity === "error")).toEqual([]);
+    const proc = parsed.document!.session.workflows[0]!.states["A"]!.transitions[0]!.processors![0]!;
+    // A null `type` falls back to the server's own default rather than
+    // vanishing — `type` is required by the canonical schema.
+    expect(proc.type).toBe("externalized");
+  });
+
   test("routes a hand-edited, saved-and-reloaded editor document through the same normalization", () => {
     const parsed = parse({ name: "t", next: "A", manual: false, schedule: { delayMs: 1000 } });
     const saved = JSON.parse(serializeEditorDocument(parsed.document!));
@@ -129,5 +159,64 @@ describe("0.8 dialect normalization (spec §2)", () => {
     const reloadedTx = reloaded.document!.session.workflows[0]!.states["A"]!.transitions[0]!;
     expect(reloadedTx.schedule).not.toHaveProperty("delayMs");
     expect(reloadedTx.schedule?.function).toMatchObject(FN);
+  });
+});
+
+describe("legacy processor-level startNewTxOnDispatch migration", () => {
+  const legacy = (extra: Record<string, unknown> = {}) => ({
+    type: "externalized",
+    name: "p",
+    executionMode: "COMMIT_BEFORE_DISPATCH",
+    startNewTxOnDispatch: true,
+    ...extra,
+  });
+
+  test("relocates a legacy processor-level flag into config and round-trips it", () => {
+    // Every release of this library before 0.8.3 emitted `startNewTxOnDispatch`
+    // on the processor object. 0.8.3 hard-400s that shape, so without a
+    // migration these documents are broken against the server AND silently
+    // stripped here.
+    const parsed = parse({
+      name: "t", next: "A", manual: true,
+      processors: [legacy({ config: { calculationNodesTags: "t" } })],
+    });
+    expect(parsed.issues.filter((i) => i.severity === "error")).toEqual([]);
+    const proc = parsed.document!.session.workflows[0]!.states["A"]!.transitions[0]!.processors![0]!;
+    expect(proc.config?.startNewTxOnDispatch).toBe(true);
+    expect(proc).not.toHaveProperty("startNewTxOnDispatch");
+
+    const wire = JSON.parse(serializeImportPayload(parsed.document!));
+    const wireProc = wire.workflows[0].states.A.transitions[0].processors[0];
+    expect(wireProc.config.startNewTxOnDispatch).toBe(true);
+    expect(wireProc).not.toHaveProperty("startNewTxOnDispatch");
+  });
+
+  test("creates config when the legacy document has none", () => {
+    const parsed = parse({ name: "t", next: "A", manual: true, processors: [legacy()] });
+    const proc = parsed.document!.session.workflows[0]!.states["A"]!.transitions[0]!.processors![0]!;
+    expect(proc.config?.startNewTxOnDispatch).toBe(true);
+  });
+
+  test("relocates an explicit false as faithfully as a true", () => {
+    const parsed = parse({
+      name: "t", next: "A", manual: true,
+      processors: [legacy({ startNewTxOnDispatch: false })],
+    });
+    const proc = parsed.document!.session.workflows[0]!.states["A"]!.transitions[0]!.processors![0]!;
+    expect(proc.config?.startNewTxOnDispatch).toBe(false);
+  });
+
+  test("prefers the config value when both positions carry the key", () => {
+    const parsed = parse({
+      name: "t", next: "A", manual: true,
+      processors: [legacy({ config: { startNewTxOnDispatch: false } })],
+    });
+    const proc = parsed.document!.session.workflows[0]!.states["A"]!.transitions[0]!.processors![0]!;
+    expect(proc.config?.startNewTxOnDispatch).toBe(false);
+  });
+
+  test("does not report the migrated field as a dropped processor key", () => {
+    const parsed = parse({ name: "t", next: "A", manual: true, processors: [legacy()] });
+    expect(parsed.warnings ?? []).toEqual([]);
   });
 });

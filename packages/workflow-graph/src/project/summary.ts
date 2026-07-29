@@ -53,13 +53,17 @@ export function summarizeProcessors(
  * `executionMode` is meaningful regardless of `type` — cyoda-go preserves
  * `type` verbatim, and skipping non-"externalized" processors here would
  * silently drop them from the summary.
+ *
+ * An ABSENT `executionMode` reads as `SYNC`, not `ASYNC_NEW_TX`: SYNC is the
+ * documented default at fire (spec §4a), and the serializer now preserves an
+ * absent mode rather than fabricating one, so this shape reaches the graph.
  */
 export function summarizeExecution(
   processors: Processor[] | undefined,
 ): ExecutionSummary | undefined {
   if (!processors) return undefined;
   for (const p of processors) {
-    const mode = p.executionMode ?? "ASYNC_NEW_TX";
+    const mode = p.executionMode ?? "SYNC";
     if (mode === "SYNC") return { kind: "sync" };
     if (mode === "ASYNC_SAME_TX") return { kind: "asyncSameTx" };
     return undefined; // ASYNC_NEW_TX — default, omitted.

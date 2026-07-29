@@ -5,6 +5,7 @@ import type {
   EdgeAnchorPair,
   HostRef,
   Processor,
+  ScheduleFunction,
   Transition,
   TransitionSchedule,
   ValidationIssue,
@@ -23,12 +24,6 @@ import {
 import { AnnotationsField } from "./AnnotationsField.js";
 import { normalizeTags } from "./tags.js";
 import type { Selection } from "../state/types.js";
-
-// `ScheduleFunction` itself isn't re-exported from @cyoda/workflow-core's
-// public surface (only `TransitionSchedule` is) — derive it structurally
-// rather than touching workflow-core's export list, which is out of scope
-// for this task.
-type ScheduleFunction = NonNullable<TransitionSchedule["function"]>;
 
 export function TransitionForm({
   workflow,
