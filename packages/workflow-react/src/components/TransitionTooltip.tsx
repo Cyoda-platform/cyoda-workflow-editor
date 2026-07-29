@@ -108,7 +108,11 @@ function CriterionView({ criterion, depth = 0 }: { criterion: Criterion; depth?:
 }
 
 function ProcessorView({ processor }: { processor: Processor }) {
-  const mode = processor.executionMode ?? "ASYNC_NEW_TX";
+  // An absent executionMode reads as SYNC, the documented default at fire
+  // (spec §4a) — not ASYNC_NEW_TX. Only an *explicit* ASYNC_NEW_TX is the
+  // true default and stays badge-less; matches summarizeExecution and
+  // ProcessorForm's summarizeProcessor.
+  const mode = processor.executionMode ?? "SYNC";
   return (
     <div style={{ marginBottom: 4 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>

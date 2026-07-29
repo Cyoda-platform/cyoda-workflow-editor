@@ -22,12 +22,20 @@ const EXECUTION_MODES: ExecutionMode[] = [
   "COMMIT_BEFORE_DISPATCH",
 ];
 
-function parseOptionalInteger(value: string, label: string): { value?: number; error?: string } {
+function parseOptionalInteger(
+  value: string,
+  label: string,
+  opts: { allowNegative?: boolean } = {},
+): { value?: number; error?: string } {
   const trimmed = value.trim();
   if (trimmed.length === 0) return { value: undefined };
   const parsed = Number(trimmed);
-  if (!Number.isInteger(parsed) || parsed < 0) {
-    return { error: `${label} must be an integer greater than or equal to 0.` };
+  if (!Number.isInteger(parsed) || (!opts.allowNegative && parsed < 0)) {
+    return {
+      error: opts.allowNegative
+        ? `${label} must be an integer.`
+        : `${label} must be an integer greater than or equal to 0.`,
+    };
   }
   return { value: parsed };
 }
@@ -40,7 +48,12 @@ type ProcessorDraft = {
   // the form must be able to represent "the source had none" without
   // inventing a value on Apply.
   executionMode: ExecutionMode | "";
-  startNewTxOnDispatch: boolean;
+  // Tri-state, mirroring attachEntity below: "" clears the key (no
+  // startNewTxOnDispatch in config), "true"/"false" write an explicit
+  // boolean. A checkbox cannot represent an explicit `false`, and collapsing
+  // it to absent would silently drop the field on a migrated legacy document
+  // (see toProcessor).
+  startNewTxOnDispatch: "" | "true" | "false";
   // Tri-state, mirroring TransitionForm's schedule.function.attachEntity:
   // "" clears the key (server default: true), "true"/"false" write an explicit
   // boolean. A checkbox cannot represent this, and collapsing an explicit
@@ -50,7 +63,10 @@ type ProcessorDraft = {
   responseTimeoutMs: string;
   retryPolicy: string;
   context: string;
-  asyncResult: boolean;
+  // Tri-state, same rationale as attachEntity/startNewTxOnDispatch: the
+  // server preserves an explicit `false` (spec §4a) and only rejects `true`,
+  // so a checkbox that collapses `false` to absent silently drops the field.
+  asyncResult: "" | "true" | "false";
   crossoverToAsyncMs: string;
   annotations?: Annotations;
 };
@@ -65,7 +81,12 @@ function toDraft(processor?: Processor): ProcessorDraft {
     type: processor?.type ?? "externalized",
     name: processor?.name ?? "",
     executionMode: processor?.executionMode ?? "",
-    startNewTxOnDispatch: processor?.config?.startNewTxOnDispatch ?? false,
+    startNewTxOnDispatch:
+      processor?.config?.startNewTxOnDispatch === undefined
+        ? ""
+        : processor.config.startNewTxOnDispatch
+          ? "true"
+          : "false",
     attachEntity:
       processor?.config?.attachEntity === undefined
         ? ""
@@ -79,7 +100,12 @@ function toDraft(processor?: Processor): ProcessorDraft {
         : "",
     retryPolicy: processor?.config?.retryPolicy ?? "",
     context: processor?.config?.context ?? "",
-    asyncResult: processor?.config?.asyncResult ?? false,
+    asyncResult:
+      processor?.config?.asyncResult === undefined
+        ? ""
+        : processor.config.asyncResult
+          ? "true"
+          : "false",
     crossoverToAsyncMs:
       processor?.config?.crossoverToAsyncMs !== undefined
         ? String(processor.config.crossoverToAsyncMs)
@@ -114,7 +140,13 @@ function nonCanonicalTypeMessage(type: string): string {
 }
 
 function toProcessor(draft: ProcessorDraft): Processor {
-  const responseTimeout = parseOptionalInteger(draft.responseTimeoutMs, "Response timeout");
+  // No lower bound: the server accepts any integer, including negatives
+  // (spec §4a — the same over-constraint disagreement #2 diagnoses for
+  // schedule.timeoutMs). crossoverToAsyncMs keeps its >= 0 bound; only
+  // responseTimeoutMs is relaxed.
+  const responseTimeout = parseOptionalInteger(draft.responseTimeoutMs, "Response timeout", {
+    allowNegative: true,
+  });
   const crossover = parseOptionalInteger(draft.crossoverToAsyncMs, "Crossover to async");
   const config: NonNullable<ExternalizedProcessor["config"]> = {};
   if (draft.attachEntity !== "") config.attachEntity = draft.attachEntity === "true";
@@ -123,13 +155,21 @@ function toProcessor(draft: ProcessorDraft): Processor {
   if (responseTimeout.value !== undefined) config.responseTimeoutMs = responseTimeout.value;
   if (draft.retryPolicy.trim().length > 0) config.retryPolicy = draft.retryPolicy.trim();
   if (draft.context.trim().length > 0) config.context = draft.context;
-  if (draft.asyncResult) config.asyncResult = true;
+  // Emitted on !== "" (spec §4a): the server preserves an explicit `false`
+  // and only rejects `true`, so collapsing `false` to absent would drop it.
+  if (draft.asyncResult !== "") config.asyncResult = draft.asyncResult === "true";
   // Emitted independently of `asyncResult` (spec §4a): a document that parses
   // with a `crossover-unsupported` warning must not lose the field on Apply.
   if (crossover.value !== undefined) config.crossoverToAsyncMs = crossover.value;
   // cyoda-go 0.8.3 requires this INSIDE config, not on the processor.
-  if (draft.executionMode === "COMMIT_BEFORE_DISPATCH" && draft.startNewTxOnDispatch) {
-    config.startNewTxOnDispatch = true;
+  // Emitted on !== "" regardless of executionMode: a `true` value paired
+  // with a non-COMMIT_BEFORE_DISPATCH mode is invalid (the
+  // start-new-tx-without-commit-before-dispatch rule hard-errors on exactly
+  // that combination), but a migrated legacy document could carry it, and
+  // silently dropping it here would re-lose the field the migration just
+  // restored. Let the validator do the complaining, not a silent Apply.
+  if (draft.startNewTxOnDispatch !== "") {
+    config.startNewTxOnDispatch = draft.startNewTxOnDispatch === "true";
   }
 
   return {
@@ -160,7 +200,9 @@ function validateDraft(
     return `Processor "${name}" already exists on this transition.`;
   }
 
-  const responseTimeout = parseOptionalInteger(draft.responseTimeoutMs, "Response timeout");
+  const responseTimeout = parseOptionalInteger(draft.responseTimeoutMs, "Response timeout", {
+    allowNegative: true,
+  });
   if (responseTimeout.error) return responseTimeout.error;
   // Validated regardless of `asyncResult`, because it is now emitted
   // regardless of `asyncResult` (spec §4a).
@@ -263,34 +305,42 @@ export function ProcessorEditorModal({
                 setDraft((current) => ({
                   ...current,
                   executionMode: next as ExecutionMode | "",
-                  // startNewTxOnDispatch is only valid for COMMIT_BEFORE_DISPATCH.
+                  // startNewTxOnDispatch is only meaningful for
+                  // COMMIT_BEFORE_DISPATCH; switching away clears it to
+                  // absent (not "false") rather than leaving a stray
+                  // explicit value the user didn't ask to set.
                   startNewTxOnDispatch:
-                    next === "COMMIT_BEFORE_DISPATCH" ? current.startNewTxOnDispatch : false,
+                    next === "COMMIT_BEFORE_DISPATCH" ? current.startNewTxOnDispatch : "",
                 }))
               }
               testId="processor-execution-mode"
             />
           </FormField>
 
-          <label
-            style={
-              draft.executionMode === "COMMIT_BEFORE_DISPATCH"
-                ? checkboxRowStyle
-                : { ...checkboxRowStyle, opacity: 0.5 }
-            }
-            title="Only for COMMIT_BEFORE_DISPATCH: open a fresh transaction context for the dispatched call."
-          >
-            <input
-              type="checkbox"
-              checked={draft.startNewTxOnDispatch}
+          <FormField label="Start new tx on dispatch">
+            {/* Three options, not a checkbox: an explicit `true` set on a
+                processor whose mode isn't COMMIT_BEFORE_DISPATCH must survive
+                Apply (a migrated legacy document can carry exactly that
+                combination) rather than being silently collapsed to absent —
+                the start-new-tx-without-commit-before-dispatch rule is what
+                flags the combination as invalid, not this form. */}
+            <CustomSelectInput
+              value={draft.startNewTxOnDispatch}
+              options={[
+                { value: "" as const, label: "Default (false)" },
+                { value: "true" as const, label: "True" },
+                { value: "false" as const, label: "False" },
+              ]}
               disabled={fieldsDisabled || draft.executionMode !== "COMMIT_BEFORE_DISPATCH"}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, startNewTxOnDispatch: event.target.checked }))
+              onChange={(next) =>
+                setDraft((current) => ({
+                  ...current,
+                  startNewTxOnDispatch: next as "" | "true" | "false",
+                }))
               }
-              data-testid="processor-start-new-tx"
+              testId="processor-start-new-tx"
             />
-            <span>Start new transaction on dispatch</span>
-          </label>
+          </FormField>
 
           <FormField label="Attach entity">
             {/* Three options, not a checkbox: absent means `true` to the
@@ -373,28 +423,36 @@ export function ProcessorEditorModal({
             />
           </FormField>
 
-          <label style={checkboxRowStyle}>
-            <input
-              type="checkbox"
-              checked={draft.asyncResult}
+          <FormField label="Async result">
+            {/* Three options, not a checkbox: the server preserves an
+                explicit `false` (spec §4a, verified: config: { asyncResult:
+                false, ... } survives a round trip) and only rejects `true`,
+                so collapsing `false` to absent on Apply would silently drop
+                the user's setting. */}
+            <CustomSelectInput
+              value={draft.asyncResult}
+              options={[
+                { value: "" as const, label: "Default (false)" },
+                { value: "true" as const, label: "True" },
+                { value: "false" as const, label: "False" },
+              ]}
               disabled={fieldsDisabled}
-              onChange={(event) =>
+              onChange={(next) =>
                 setDraft((current) => ({
                   ...current,
-                  asyncResult: event.target.checked,
-                  crossoverToAsyncMs: event.target.checked ? current.crossoverToAsyncMs : "",
+                  asyncResult: next as "" | "true" | "false",
+                  crossoverToAsyncMs: next === "true" ? current.crossoverToAsyncMs : "",
                 }))
               }
-              data-testid="processor-async-result"
+              testId="processor-async-result"
             />
-            <span>Async result</span>
-          </label>
+          </FormField>
 
           <FormField label="Crossover to async ms">
             <input
               type="text"
               value={draft.crossoverToAsyncMs}
-              disabled={fieldsDisabled || !draft.asyncResult}
+              disabled={fieldsDisabled || draft.asyncResult !== "true"}
               onChange={(event) =>
                 setDraft((current) => ({
                   ...current,
@@ -595,16 +653,6 @@ const modalFooterStyle = {
   display: "flex",
   justifyContent: "flex-end",
   gap: 8,
-};
-
-const checkboxRowStyle = {
-  display: "flex",
-  flexDirection: "row" as const,
-  alignItems: "center",
-  gap: 6,
-  fontSize: 12,
-  color: colors.textSecondary,
-  cursor: "pointer",
 };
 
 const errorStyle = {

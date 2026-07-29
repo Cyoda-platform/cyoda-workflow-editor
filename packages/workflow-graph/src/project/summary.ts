@@ -48,7 +48,7 @@ export function summarizeProcessors(
 
 /**
  * Execution-mode summary (spec §10.4). Only returned when the "dominant"
- * mode is non-default (ASYNC_NEW_TX is the default and omitted).
+ * mode is non-default (explicit ASYNC_NEW_TX is the default and omitted).
  * Dominant = mode of the first processor; if none, returns undefined.
  * `executionMode` is meaningful regardless of `type` — cyoda-go preserves
  * `type` verbatim, and skipping non-"externalized" processors here would
@@ -57,6 +57,7 @@ export function summarizeProcessors(
  * An ABSENT `executionMode` reads as `SYNC`, not `ASYNC_NEW_TX`: SYNC is the
  * documented default at fire (spec §4a), and the serializer now preserves an
  * absent mode rather than fabricating one, so this shape reaches the graph.
+ * Only an *explicit* `ASYNC_NEW_TX` counts as the default to be omitted.
  */
 export function summarizeExecution(
   processors: Processor[] | undefined,
@@ -66,7 +67,11 @@ export function summarizeExecution(
     const mode = p.executionMode ?? "SYNC";
     if (mode === "SYNC") return { kind: "sync" };
     if (mode === "ASYNC_SAME_TX") return { kind: "asyncSameTx" };
-    return undefined; // ASYNC_NEW_TX — default, omitted.
+    // Reached by ASYNC_NEW_TX (correctly the default, omitted) but also by
+    // COMMIT_BEFORE_DISPATCH (pre-existing oddity: it falls through here too
+    // and is silently omitted as if it were the default, which it is not —
+    // left as-is, not in scope for this fix).
+    return undefined;
   }
   return undefined;
 }

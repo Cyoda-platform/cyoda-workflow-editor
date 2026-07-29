@@ -100,7 +100,13 @@ export function validateSemantics(
 
   if (session.workflows.length === 1) {
     const only = session.workflows[0];
-    if (only && only.criterion !== undefined) {
+    // `!= null` rather than `!== undefined`: same predicate mismatch already
+    // fixed in `validate/cycles.ts` and at automatedOrderingRules below.
+    // `validateSemantics` is public API and `validateAfterPatch` calls it
+    // with zero normalization, so an explicit `criterion: null` (what the
+    // server emits, and what a hand-edited document carries) must read the
+    // same as an absent key — not as "set" — or the rule fires spuriously.
+    if (only && only.criterion != null) {
       issues.push({
         severity: "info",
         code: "unused-workflow-criterion",

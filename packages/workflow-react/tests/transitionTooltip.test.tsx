@@ -23,3 +23,30 @@ describe("transition tooltip annotations", () => {
     expect(screen.getByText("Notify approver")).toBeTruthy();
   });
 });
+
+describe("transition tooltip processor execution-mode badge (spec §4a)", () => {
+  // An absent executionMode reads as SYNC, the documented default at fire —
+  // not ASYNC_NEW_TX. summarizeExecution (workflow-graph) and
+  // ProcessorForm's summarizeProcessor already agree on this; these two
+  // tooltips were the two sites still treating an absent mode as
+  // ASYNC_NEW_TX and rendering no badge at all, contradicting the edge
+  // badge, which already says "sync".
+  test("renders a SYNC badge for a processor with no executionMode", () => {
+    const withoutMode: Transition = {
+      ...t,
+      processors: [{ type: "externalized", name: "notify" }],
+    };
+    render(<TransitionTooltip transition={withoutMode} x={0} y={0} />);
+    expect(screen.getByText("SYNC")).toBeTruthy();
+  });
+
+  test("omits the badge for an explicit ASYNC_NEW_TX (the true default)", () => {
+    const explicitDefault: Transition = {
+      ...t,
+      processors: [{ type: "externalized", name: "notify", executionMode: "ASYNC_NEW_TX" }],
+    };
+    render(<TransitionTooltip transition={explicitDefault} x={0} y={0} />);
+    expect(screen.queryByText("ASYNC NEW TX")).toBeNull();
+    expect(screen.queryByText(/ASYNC/)).toBeNull();
+  });
+});

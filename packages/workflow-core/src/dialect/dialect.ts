@@ -7,7 +7,9 @@ import type { CyodaSchemaVersion } from "./version.js";
  * - `value` is the canonical raw value handed to the Zod schema.
  * - `warnings` are human-readable notes about lossy or dropped content (e.g.
  *   `processor-config-keys-dropped:<name>:<keys>` when the 0.8 dialect strips
- *   a processor-config key cyoda-go doesn't recognise). Empty when none.
+ *   a processor-config key cyoda-go doesn't recognise, or
+ *   `processor-keys-dropped:<name>:<keys>` for the same at processor level).
+ *   Empty when none.
  */
 export interface ToCanonicalResult {
   value: unknown;

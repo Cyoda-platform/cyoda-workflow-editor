@@ -192,7 +192,7 @@ describe("processor modal UX", () => {
     const crossover = screen.getByTestId("processor-crossover-input") as HTMLInputElement;
     expect(crossover.disabled).toBe(true);
 
-    fireEvent.click(screen.getByTestId("processor-async-result"));
+    fireEvent.change(screen.getByTestId("processor-async-result"), { target: { value: "true" } });
     expect((screen.getByTestId("processor-crossover-input") as HTMLInputElement).disabled).toBe(
       false,
     );
@@ -320,6 +320,112 @@ describe("processor modal round-trip fidelity (spec §4a)", () => {
         name: "notify",
         executionMode: "SYNC",
         config: { crossoverToAsyncMs: 500 },
+      },
+    });
+  });
+
+  it("preserves an explicit startNewTxOnDispatch: false instead of collapsing it to absent", () => {
+    // Same bug class as attachEntity, now that the field lives inside
+    // config (spec §4a / disagreement #3): an explicit `false` is a real,
+    // distinct value from absent and must survive an untouched Apply.
+    const { onDispatch, processorUuids } = renderTransitionForm([
+      {
+        type: "externalized",
+        name: "notify",
+        executionMode: "COMMIT_BEFORE_DISPATCH",
+        config: { startNewTxOnDispatch: false },
+      },
+    ]);
+
+    openEditAndApply(onDispatch);
+    expect(onDispatch).toHaveBeenCalledWith({
+      op: "updateProcessor",
+      processorUuid: processorUuids[0],
+      updates: {
+        type: "externalized",
+        name: "notify",
+        executionMode: "COMMIT_BEFORE_DISPATCH",
+        config: { startNewTxOnDispatch: false },
+      },
+    });
+  });
+
+  it("preserves startNewTxOnDispatch: true even when executionMode isn't COMMIT_BEFORE_DISPATCH", () => {
+    // Invalid (flagged by the hard start-new-tx-without-commit-before-dispatch
+    // error), but a migrated legacy document can carry exactly this
+    // combination — Apply must not be what silently deletes it.
+    const { onDispatch, processorUuids } = renderTransitionForm([
+      {
+        type: "externalized",
+        name: "notify",
+        executionMode: "SYNC",
+        config: { startNewTxOnDispatch: true },
+      },
+    ]);
+
+    openEditAndApply(onDispatch);
+    expect(onDispatch).toHaveBeenCalledWith({
+      op: "updateProcessor",
+      processorUuid: processorUuids[0],
+      updates: {
+        type: "externalized",
+        name: "notify",
+        executionMode: "SYNC",
+        config: { startNewTxOnDispatch: true },
+      },
+    });
+  });
+
+  it("preserves an explicit asyncResult: false instead of dropping it", () => {
+    // Verified against the server: config: { asyncResult: false, ... }
+    // survives a round trip; only `true` is rejected (spec §4a).
+    const { onDispatch, processorUuids } = renderTransitionForm([
+      {
+        type: "externalized",
+        name: "notify",
+        executionMode: "SYNC",
+        config: { asyncResult: false, calculationNodesTags: "t" },
+      },
+    ]);
+
+    openEditAndApply(onDispatch);
+    expect(onDispatch).toHaveBeenCalledWith({
+      op: "updateProcessor",
+      processorUuid: processorUuids[0],
+      updates: {
+        type: "externalized",
+        name: "notify",
+        executionMode: "SYNC",
+        config: { asyncResult: false, calculationNodesTags: "t" },
+      },
+    });
+  });
+
+  it("accepts a negative responseTimeoutMs instead of blocking Apply", () => {
+    // Verified against a live cyoda-go 0.8.3: responseTimeoutMs: -1 is
+    // accepted with a 200. The canonical schema was relaxed to any integer;
+    // the modal's own parseOptionalInteger must not re-impose the bound.
+    const { onDispatch, processorUuids } = renderTransitionForm([
+      {
+        type: "externalized",
+        name: "notify",
+        executionMode: "SYNC",
+        config: { responseTimeoutMs: -1 },
+      },
+    ]);
+
+    fireEvent.click(screen.getByTestId("processor-edit-0"));
+    expect(screen.queryByTestId("processor-modal-error")).toBeNull();
+    fireEvent.click(screen.getByTestId("processor-modal-apply"));
+
+    expect(onDispatch).toHaveBeenCalledWith({
+      op: "updateProcessor",
+      processorUuid: processorUuids[0],
+      updates: {
+        type: "externalized",
+        name: "notify",
+        executionMode: "SYNC",
+        config: { responseTimeoutMs: -1 },
       },
     });
   });

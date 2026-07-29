@@ -104,20 +104,46 @@ describe("processor annotations", () => {
 });
 
 describe("processor startNewTxOnDispatch field", () => {
+  it("is a select limited to Default/True/False, not a checkbox", () => {
+    renderModal({ ...base, executionMode: "COMMIT_BEFORE_DISPATCH" });
+    const select = screen.getByTestId("processor-start-new-tx") as HTMLSelectElement;
+    expect(select.tagName.toLowerCase()).toBe("select");
+    expect(Array.from(select.options).map((o) => o.value)).toEqual(["", "true", "false"]);
+  });
+
   it("disables the flag unless execution mode is COMMIT_BEFORE_DISPATCH", () => {
     renderModal({ ...base, executionMode: "SYNC" });
-    const cb = screen.getByTestId("processor-start-new-tx") as HTMLInputElement;
-    expect(cb.disabled).toBe(true);
+    const select = screen.getByTestId("processor-start-new-tx") as HTMLSelectElement;
+    expect(select.disabled).toBe(true);
   });
 
   it("emits startNewTxOnDispatch when set under COMMIT_BEFORE_DISPATCH", () => {
     const { onApply } = renderModal({ ...base, executionMode: "COMMIT_BEFORE_DISPATCH" });
-    const cb = screen.getByTestId("processor-start-new-tx") as HTMLInputElement;
-    expect(cb.disabled).toBe(false);
+    const select = screen.getByTestId("processor-start-new-tx") as HTMLSelectElement;
+    expect(select.disabled).toBe(false);
 
-    fireEvent.click(cb);
+    fireEvent.change(select, { target: { value: "true" } });
     fireEvent.click(screen.getByTestId("processor-modal-apply"));
 
     expect(onApply.mock.calls[0]![0].config?.startNewTxOnDispatch).toBe(true);
+  });
+
+  it("preserves an explicit startNewTxOnDispatch: false instead of collapsing it to absent", () => {
+    // Same bug class as attachEntity: false must survive, since the field is
+    // meaningful (and false is a real, distinct value from absent) once it's
+    // moved inside config (spec §4a / disagreement #3).
+    const { onApply } = renderModal({
+      ...base,
+      executionMode: "COMMIT_BEFORE_DISPATCH",
+      config: { startNewTxOnDispatch: false },
+    });
+    fireEvent.click(screen.getByTestId("processor-modal-apply"));
+    expect(onApply.mock.calls[0]![0].config?.startNewTxOnDispatch).toBe(false);
+  });
+
+  it("keeps startNewTxOnDispatch absent when the source had none", () => {
+    const { onApply } = renderModal({ ...base, executionMode: "COMMIT_BEFORE_DISPATCH" });
+    fireEvent.click(screen.getByTestId("processor-modal-apply"));
+    expect(onApply.mock.calls[0]![0].config).toBeUndefined();
   });
 });
