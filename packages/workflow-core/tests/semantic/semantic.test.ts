@@ -122,7 +122,7 @@ describe("semantic validation", () => {
     expect(codes(json)).toContain("duplicate-transition-name");
   });
 
-  test("crossover-without-async-result", () => {
+  test("crossover-unsupported", () => {
     const json = {
       importMode: "MERGE",
       workflows: [
@@ -154,7 +154,7 @@ describe("semantic validation", () => {
         },
       ],
     };
-    expect(codes(json)).toContain("crossover-without-async-result");
+    expect(codes(json)).toContain("crossover-unsupported");
   });
 
   test("a state with only manual transitions is not flagged (rule removed)", () => {

@@ -46,7 +46,7 @@ describe("processor type is preserved verbatim (spec §1)", () => {
     expect(codes).not.toContain("processor-type-non-canonical");
   });
 
-  test("crossover-without-async-result fires regardless of type, including canonical empty", () => {
+  test("crossover-unsupported fires regardless of type, including canonical empty", () => {
     const raw = JSON.stringify({
       importMode: "MERGE",
       workflows: [{
@@ -58,7 +58,7 @@ describe("processor type is preserved verbatim (spec §1)", () => {
       }],
     });
     const parsed = parseImportPayload(raw);
-    const issue = parsed.issues.find((i) => i.code === "crossover-without-async-result");
+    const issue = parsed.issues.find((i) => i.code === "crossover-unsupported");
     expect(issue?.severity).toBe("warning");
   });
 });

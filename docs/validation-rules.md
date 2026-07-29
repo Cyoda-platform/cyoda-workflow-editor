@@ -40,6 +40,7 @@ code is added or removed without updating this file.
 | `schedule-manual-conflict` | transition | yes | A transition has both `schedule` and `manual: true`; the two are mutually exclusive. |
 | `schedule-function-incomplete` | transition | yes | `schedule.function` is missing `name` or `calculationNodesTags`. |
 | `workflow-schema-version-malformed` | workflow | yes | The in-document `version` tag is not `MAJOR.MINOR`, uses an unsupported major, or exceeds the max minor the target server accepts. |
+| `unknown-retry-policy` | processor | yes | Processor `config.retryPolicy` is outside `NONE` / `FIXED` / empty; cyoda-go hard-400s on anything else. |
 | `schema-*` | varies | — | A canonical Zod schema check failed; the suffix is the Zod issue code. |
 
 ## Warnings
@@ -51,7 +52,8 @@ code is added or removed without updating this file.
 | `unsupported-group-operator` | criterion | — | Group operator `NOT` is not implemented by the engine. |
 | `not-with-multiple-conditions` | criterion | — | A `NOT` group carries more than one condition. |
 | `start-new-tx-without-commit-before-dispatch` | processor | yes | `startNewTxOnDispatch` is set but the mode is not `COMMIT_BEFORE_DISPATCH`. |
-| `crossover-without-async-result` | processor | — | `crossoverToAsyncMs` is set but `asyncResult` is not true. |
+| `async-result-unsupported` | processor | yes | `config.asyncResult` is `true`; rejected by cyoda-go, supported on Cyoda Cloud only. |
+| `crossover-unsupported` | processor | yes | `config.crossoverToAsyncMs` is set; rejected by cyoda-go, supported on Cyoda Cloud only. |
 | `processor-type-internalized` | processor | yes | Processor `type` is the reserved value `"internalized"`; cyoda-go accepts it at import but rejects it at dispatch. |
 | `processor-type-non-canonical` | processor | yes | Processor `type` is neither `"externalized"` nor empty; cyoda-go stores and returns it verbatim today. |
 | `criterion-depth-warning` | criterion | — | Criterion tree depth is near the engine limit. |

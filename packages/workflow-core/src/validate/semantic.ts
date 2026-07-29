@@ -17,6 +17,9 @@ import { isValidName, walkCriteria } from "./helpers.js";
 
 const LIFECYCLE_FIELDS = new Set(["state", "creationDate", "previousTransition"]);
 
+/** Processor config `retryPolicy` values cyoda-go accepts; anything else is a hard 400. */
+const RETRY_POLICIES = new Set(["NONE", "FIXED", ""]);
+
 export const ANNOTATIONS_MAX_BYTES = 64 * 1024;
 
 /**
@@ -258,17 +261,29 @@ function validateWorkflow(
               ...transitionTargetId(doc, wf.name, stateCode, index),
             });
           }
-          if (p.config) {
-            if (
-              p.config.crossoverToAsyncMs !== undefined &&
-              p.config.asyncResult !== true
-            ) {
-              issues.push({
-                severity: "warning",
-                code: "crossover-without-async-result",
-                message: `Processor "${p.name}" sets crossoverToAsyncMs but asyncResult is not true.`,
-              });
-            }
+          if (p.config?.retryPolicy !== undefined && !RETRY_POLICIES.has(p.config.retryPolicy)) {
+            issues.push({
+              severity: "error",
+              code: "unknown-retry-policy",
+              message: `Processor "${p.name}": unknown retryPolicy "${p.config.retryPolicy}" (allowed: NONE, FIXED, or empty).`,
+              ...transitionTargetId(doc, wf.name, stateCode, index),
+            });
+          }
+          if (p.config?.asyncResult === true) {
+            issues.push({
+              severity: "warning",
+              code: "async-result-unsupported",
+              message: `Processor "${p.name}": asyncResult=true is rejected by cyoda-go; supported on Cyoda Cloud only.`,
+              ...transitionTargetId(doc, wf.name, stateCode, index),
+            });
+          }
+          if (p.config?.crossoverToAsyncMs !== undefined) {
+            issues.push({
+              severity: "warning",
+              code: "crossover-unsupported",
+              message: `Processor "${p.name}": crossoverToAsyncMs is rejected by cyoda-go; supported on Cyoda Cloud only.`,
+              ...transitionTargetId(doc, wf.name, stateCode, index),
+            });
           }
           if (p.type === "internalized") {
             issues.push({
