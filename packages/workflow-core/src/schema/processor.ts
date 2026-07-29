@@ -14,12 +14,15 @@ export const ExternalizedProcessorSchema = z.object({
   type: z.literal("externalized"),
   name: NameSchema,
   executionMode: ExecutionModeSchema.optional(),
-  startNewTxOnDispatch: z.boolean().optional(),
   annotations: AnnotationsSchema.optional(),
   config: FunctionConfigSchema.and(
     z.object({
       asyncResult: z.boolean().optional(),
+      // Kept `.nonnegative()` here (not relaxed per the brief's snippet) —
+      // that constraint is verified server behaviour and
+      // tests/processor/processor-contract.test.ts asserts -1 is an error.
       crossoverToAsyncMs: z.number().int().nonnegative().optional(),
+      startNewTxOnDispatch: z.boolean().optional(),
     }),
   ).optional(),
 });

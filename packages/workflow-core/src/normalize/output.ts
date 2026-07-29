@@ -171,9 +171,6 @@ function outputExternalizedProcessor(
   // Omit when absent: the server's documented default at fire is SYNC, and
   // fabricating ASYNC_NEW_TX invents a mode the user never chose.
   if (p.executionMode !== undefined) out["executionMode"] = p.executionMode;
-  if ("startNewTxOnDispatch" in p && p.startNewTxOnDispatch !== undefined) {
-    out["startNewTxOnDispatch"] = p.startNewTxOnDispatch;
-  }
   if (options?.annotations && p.annotations !== undefined) out["annotations"] = p.annotations;
   if (p.config !== undefined) {
     const cfg = outputExternalizedConfig(p.config);
@@ -195,6 +192,9 @@ function outputExternalizedConfig(cfg: ExternalizedProcessorConfig): Record<stri
     out["retryPolicy"] = cfg.retryPolicy;
   }
   if (cfg.context !== undefined && cfg.context !== "") out["context"] = cfg.context;
+  if (cfg.startNewTxOnDispatch !== undefined) {
+    out["startNewTxOnDispatch"] = cfg.startNewTxOnDispatch;
+  }
   // The server round-trips an explicit false; only `true` is rejected, and that
   // is reported by the async-result-unsupported warning, not suppressed here.
   if (cfg.asyncResult !== undefined) out["asyncResult"] = cfg.asyncResult;

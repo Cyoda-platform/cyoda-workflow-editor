@@ -49,13 +49,13 @@ describe("processor OpenAPI contract", () => {
           type: "externalized",
           name: "notify",
           executionMode: "ASYNC_NEW_TX",
-          startNewTxOnDispatch: true,
           config: {
             attachEntity: true,
             calculationNodesTags: "alpha,beta",
             context: "ctx",
             responseTimeoutMs: 2500,
             retryPolicy: "retry",
+            startNewTxOnDispatch: true,
             asyncResult: true,
             crossoverToAsyncMs: 500,
           },
@@ -70,8 +70,9 @@ describe("processor OpenAPI contract", () => {
       type: "externalized",
       name: "notify",
       executionMode: "ASYNC_NEW_TX",
-      startNewTxOnDispatch: true,
     });
+    expect(processor.config).toMatchObject({ startNewTxOnDispatch: true });
+    expect(processor).not.toHaveProperty("startNewTxOnDispatch");
   });
 
   test("missing processor type is normalized to externalized", () => {
@@ -135,8 +136,7 @@ describe("processor OpenAPI contract", () => {
           type: "externalized",
           name: "commit-proc",
           executionMode: "COMMIT_BEFORE_DISPATCH",
-          startNewTxOnDispatch: true,
-          config: { calculationNodesTags: "probe" },
+          config: { calculationNodesTags: "probe", startNewTxOnDispatch: true },
         },
       ]),
     );
@@ -150,8 +150,7 @@ describe("processor OpenAPI contract", () => {
           type: "externalized",
           name: "bad-proc",
           executionMode: "SYNC",
-          startNewTxOnDispatch: true,
-          config: { calculationNodesTags: "probe" },
+          config: { calculationNodesTags: "probe", startNewTxOnDispatch: true },
         },
       ]),
     );
@@ -188,5 +187,28 @@ describe("processor OpenAPI contract", () => {
       ),
     );
     expect(crossover.issues.some((issue) => issue.severity === "error")).toBe(true);
+  });
+
+  test("startNewTxOnDispatch round-trips inside config, not on the processor", () => {
+    const raw = JSON.stringify({
+      importMode: "MERGE",
+      workflows: [{
+        version: "1.3", name: "w", initialState: "A", active: true,
+        states: { A: { transitions: [{
+          name: "t", next: "A", manual: true,
+          processors: [{
+            type: "externalized", name: "p",
+            executionMode: "COMMIT_BEFORE_DISPATCH",
+            config: { calculationNodesTags: "t", startNewTxOnDispatch: true },
+          }],
+        }] } },
+      }],
+    });
+    const parsed = parseImportPayload(raw);
+    expect(parsed.issues.filter((i) => i.severity === "error")).toEqual([]);
+    const out = JSON.parse(serializeImportPayload(parsed.document!));
+    const p = out.workflows[0].states.A.transitions[0].processors[0];
+    expect(p.config).toMatchObject({ startNewTxOnDispatch: true });
+    expect(p).not.toHaveProperty("startNewTxOnDispatch");
   });
 });

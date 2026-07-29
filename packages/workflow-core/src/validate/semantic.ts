@@ -182,14 +182,13 @@ function validateWorkflow(
           }
           issues.push(...nameLengthIssues(p.name, `Processor name "${p.name}"`));
           if (
-            p.type === "externalized" &&
-            p.startNewTxOnDispatch === true &&
+            p.config?.startNewTxOnDispatch === true &&
             p.executionMode !== "COMMIT_BEFORE_DISPATCH"
           ) {
             issues.push({
-              severity: "warning",
+              severity: "error",
               code: "start-new-tx-without-commit-before-dispatch",
-              message: `Processor "${p.name}" sets startNewTxOnDispatch but executionMode is not COMMIT_BEFORE_DISPATCH.`,
+              message: `Processor "${p.name}": startNewTxOnDispatch=true is only valid with executionMode=COMMIT_BEFORE_DISPATCH (got "${p.executionMode ?? ""}").`,
               ...transitionTargetId(doc, wf.name, stateCode, index),
             });
           }

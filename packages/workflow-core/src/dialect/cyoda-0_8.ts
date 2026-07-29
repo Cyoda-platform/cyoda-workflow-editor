@@ -77,20 +77,14 @@ const TRANSITION_FIELDS = [
   "processors",
   "schedule",
 ] as const;
-const PROCESSOR_FIELDS = [
-  "type",
-  "name",
-  "executionMode",
-  "startNewTxOnDispatch",
-  "annotations",
-  "config",
-] as const;
+const PROCESSOR_FIELDS = ["type", "name", "executionMode", "annotations", "config"] as const;
 const PROCESSOR_CONFIG_FIELDS = [
   "attachEntity",
   "calculationNodesTags",
   "responseTimeoutMs",
   "retryPolicy",
   "context",
+  "startNewTxOnDispatch",
   "asyncResult",
   "crossoverToAsyncMs",
 ] as const;
