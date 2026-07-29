@@ -15,6 +15,7 @@ import {
   parseImportPayload,
   serializeImportPayload,
   PatchConflictError,
+  type ValidationFix,
   type Workflow,
   type WorkflowEditorDocument,
   type WorkflowUiMeta,
@@ -554,6 +555,23 @@ export function WorkflowEditor({
       );
     },
     [state.document, actions],
+  );
+
+  // Apply the remediation an issue offers (`ValidationIssue.fix`), invoked from
+  // the issues drawer. `fix.apply` returns a whole new document and bumps
+  // `meta.revision` itself (see the ValidationFix type doc), so the document is
+  // installed as-is rather than being reduced to a session patch — a fix is
+  // free to touch `meta`, and a replaceSession round-trip would drop that.
+  // Written via silentReplace for the same reason handleAllowCyclesChange is:
+  // no DomainPatch op expresses "swap the whole document", and the coarse
+  // replaceSession snapshot would stomp editor state we don't want to disturb.
+  const handleApplyFix = useCallback(
+    (fix: ValidationFix) => {
+      actions.silentReplace(fix.apply(documentStateRef.current), {
+        preserveEditorState: true,
+      });
+    },
+    [actions],
   );
 
   // Dormant while only one dialect ships (see spec §0). Kept rather than deleted
@@ -1280,6 +1298,7 @@ export function WorkflowEditor({
               onJumpTo={(selection) => {
                 handleSelectionChange(selection);
               }}
+              onApplyFix={readOnly ? undefined : handleApplyFix}
             />
           </div>
         )}

@@ -129,6 +129,92 @@ describe("0.8 dialect normalization (spec §2)", () => {
     );
   });
 
+  // Spec §1 justified the config-key warning as "the editor's only signal that
+  // it discarded the meaning of a processor". `ParseResult.warnings` had one
+  // reader, inside a version-switch flow that is unreachable while a single
+  // dialect ships — so the signal reached nobody. Mirror them into `issues`,
+  // which every surface (toolbar pills, issues drawer) already renders.
+  describe("dialect warnings also surface as info-severity issues", () => {
+    test("dropped processor config keys become an issue naming processor and keys", () => {
+      const parsed = parse({
+        name: "t", next: "A", manual: true,
+        processors: [{
+          type: "scheduled", name: "RetryLater",
+          config: { delaySeconds: 300, transition: "retry" },
+        }],
+      });
+      const issue = parsed.issues.find((i) => i.code === "processor-config-keys-dropped");
+      expect(issue?.severity).toBe("info");
+      expect(issue?.message).toContain("RetryLater");
+      expect(issue?.message).toContain("delaySeconds");
+      expect(issue?.message).toContain("transition");
+      // The raw array stays: it is public API and other consumers read it.
+      expect(parsed.warnings ?? []).toContainEqual(
+        expect.stringContaining("processor-config-keys-dropped"),
+      );
+    });
+
+    test("dropped processor-level keys become an issue", () => {
+      const parsed = parse({
+        name: "t", next: "A", manual: true,
+        processors: [{ type: "externalized", name: "p", delaySeconds: 300, transition: "retry" }],
+      });
+      const issue = parsed.issues.find((i) => i.code === "processor-keys-dropped");
+      expect(issue?.severity).toBe("info");
+      expect(issue?.message).toContain('"p"');
+      expect(issue?.message).toContain("delaySeconds,transition");
+    });
+
+    test("a clean payload adds no warning issues", () => {
+      const parsed = parse({
+        name: "t", next: "A", manual: true,
+        processors: [{ type: "externalized", name: "p", executionMode: "SYNC" }],
+      });
+      expect(parsed.warnings).toBeUndefined();
+      expect(parsed.issues.map((i) => i.code)).not.toContain("processor-keys-dropped");
+    });
+
+    test("the editor-document path surfaces them too", () => {
+      // parseEditorDocument is the path a saved editor file takes on reopen —
+      // the same dropped-key signal, and it must reach the same drawer.
+      const parsed = parseEditorDocument(JSON.stringify({
+        session: {
+          entity: null,
+          importMode: "MERGE",
+          workflows: [{
+            version: "1.3", name: "w", initialState: "A", active: true,
+            states: { A: { transitions: [{
+              name: "t", next: "A", manual: true,
+              processors: [{ type: "externalized", name: "p", delaySeconds: 300 }],
+            }] } },
+          }],
+        },
+        meta: {
+          revision: 0,
+          ids: { workflows: {}, states: {}, transitions: {}, processors: {}, criteria: {} },
+          workflowUi: {},
+        },
+      }));
+      expect(parsed.warnings ?? []).toContainEqual(
+        expect.stringContaining("processor-keys-dropped:p:delaySeconds"),
+      );
+      const issue = parsed.issues.find((i) => i.code === "processor-keys-dropped");
+      expect(issue?.severity).toBe("info");
+      expect(issue?.message).toContain("delaySeconds");
+    });
+
+    test("warnings still surface when the payload fails schema validation", () => {
+      // The schema-failure return path bails before semantic validation; the
+      // dropped-key signal must not be lost with it.
+      const parsed = parse({
+        name: "t", next: 42, manual: true,
+        processors: [{ type: "externalized", name: "p", delaySeconds: 300 }],
+      });
+      expect(parsed.ok).toBe(false);
+      expect(parsed.issues.map((i) => i.code)).toContain("processor-keys-dropped");
+    });
+  });
+
   test.each([
     ["type", { type: null, name: "p", executionMode: "SYNC" }],
     ["executionMode", { type: "externalized", name: "p", executionMode: null }],

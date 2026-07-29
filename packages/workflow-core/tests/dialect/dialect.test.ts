@@ -57,6 +57,20 @@ describe("dialect registry", () => {
     expect(() => getDialect("0.7")).toThrow(/0\.8\.3/);
     expect(() => getDialect("9.9")).toThrow(/Unknown cyoda-go schema version/);
   });
+
+  // `version` comes from untrusted document metadata. Looking the
+  // removed-versions table up with a plain index read walked the prototype
+  // chain, so `"constructor"` produced `Error: function Object() { [native
+  // code] }` and `"__proto__"` produced `Error: [object Object]` — nonsense
+  // in place of the actionable "unknown version" message.
+  test.each(["constructor", "__proto__", "toString", "valueOf", "hasOwnProperty"])(
+    "%j is an unknown version, not a prototype-chain hit",
+    (name) => {
+      expect(() => getDialect(name)).toThrow(
+        new RegExp(`Unknown cyoda-go schema version "${name.replace(/[$]/g, "\\$")}"`),
+      );
+    },
+  );
 });
 
 describe("default dialect path records the latest version (0.8)", () => {

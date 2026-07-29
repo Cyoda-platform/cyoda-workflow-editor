@@ -66,12 +66,16 @@ function documentedSections(md: string): Map<string, string> {
 describe("validation rule catalog is in sync with the source", () => {
   const semantic = read("../../src/validate/semantic.ts");
   const schema = read("../../src/validate/schema.ts");
+  const parseImport = read("../../src/parse/parse-import.ts");
   const docs = read("../../../../docs/validation-rules.md");
 
-  const source = sourceCodes(semantic);
+  // parse-import.ts emits issues too (the dialect's dropped-key notes and the
+  // operator-alias conflict), and they render in the same drawer, so they are
+  // held to the same documentation contract.
+  const source = new Set([...sourceCodes(semantic), ...sourceCodes(parseImport)]);
   const documented = documentedCodes(docs);
 
-  test("every code emitted by semantic.ts is documented", () => {
+  test("every code emitted by semantic.ts or parse-import.ts is documented", () => {
     const undocumented = [...source].filter((c) => !documented.has(c)).sort();
     expect(undocumented).toEqual([]);
   });

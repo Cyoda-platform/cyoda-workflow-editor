@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { parseImportPayload, validateSemantics } from "../../src/index.js";
-import type { WorkflowSession } from "../../src/index.js";
+import { parseImportPayload, validateAll, validateSemantics } from "../../src/index.js";
+import type { WorkflowEditorDocument, WorkflowSession } from "../../src/index.js";
 
 function parse(version: string) {
   return parseImportPayload(JSON.stringify({
@@ -54,5 +54,50 @@ describe("workflow schema version tag (spec §4)", () => {
     const codes = parse(v).issues.map((i) => i.code);
     expect(codes).not.toContain("workflow-schema-version-malformed");
     expect(codes).not.toContain("workflow-schema-version-outdated");
+  });
+});
+
+describe("a document naming an unresolvable dialect (the 0.8.3 upgrade path)", () => {
+  // Every editor document saved by a pre-0.8.3 build of this library carries
+  // `meta.cyodaVersion: "0.7"`, and the "0.7" dialect was removed. `validateAll`
+  // and the React derive path do not catch, so a throw here tears the editor
+  // down on render.
+  function legacyDocument(): WorkflowEditorDocument {
+    const parsed = parse("1.3");
+    return {
+      ...parsed.document!,
+      meta: { ...parsed.document!.meta, cyodaVersion: "0.7" },
+    };
+  }
+
+  test("validateAll returns issues rather than throwing", () => {
+    expect(() => validateAll(legacyDocument())).not.toThrow();
+  });
+
+  test("the unresolvable version is reported, once, as info", () => {
+    const issues = validateAll(legacyDocument()).filter(
+      (i) => i.code === "cyoda-version-unresolvable",
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.severity).toBe("info");
+    expect(issues[0]!.message).toContain('"0.7"');
+  });
+
+  test("the version-tag rule is skipped, not silently mis-evaluated", () => {
+    const doc = legacyDocument();
+    doc.session.workflows[0]!.version = "1.03";
+    const codes = validateAll(doc).map((i) => i.code);
+    expect(codes).not.toContain("workflow-schema-version-malformed");
+    expect(codes).toContain("cyoda-version-unresolvable");
+  });
+
+  test("an unknown (never-shipped) version is reported the same way", () => {
+    const parsed = parse("1.3");
+    const doc: WorkflowEditorDocument = {
+      ...parsed.document!,
+      meta: { ...parsed.document!.meta, cyodaVersion: "9.9" },
+    };
+    expect(() => validateAll(doc)).not.toThrow();
+    expect(validateAll(doc).map((i) => i.code)).toContain("cyoda-version-unresolvable");
   });
 });

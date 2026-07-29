@@ -7,7 +7,8 @@ a `targetId` that makes the drawer's **Jump to** button navigate to the
 offending state, transition, processor, or workflow.
 
 Rules live in `packages/workflow-core/src/validate/semantic.ts` (plus the
-dynamic `schema-*` family in `schema.ts`). This catalog is kept in sync by
+dynamic `schema-*` family in `schema.ts`, and the import-time codes emitted by
+`parse/parse-import.ts`). This catalog is kept in sync by
 `packages/workflow-core/tests/validate/rule-catalog.test.ts`, which fails if a
 code is added or removed without updating this file.
 
@@ -53,6 +54,7 @@ when the editor's own model cannot represent it. Anything that hinges on
 | `workflow-schema-version-malformed` | workflow | yes | The in-document `version` tag is not `MAJOR.MINOR`, uses an unsupported major, or exceeds the max minor the target server accepts. |
 | `unknown-retry-policy` | processor | yes | Processor `config.retryPolicy` is outside `NONE` / `FIXED` / empty; cyoda-go hard-400s on anything else. |
 | `start-new-tx-without-commit-before-dispatch` | processor | yes | `startNewTxOnDispatch` is set but the mode is not `COMMIT_BEFORE_DISPATCH`. |
+| `operator-alias-conflict` | — | — | Import only. A criterion carries two spellings of the same operator with different values, so the alias cannot be normalized. |
 | `schema-*` | varies | — | A canonical Zod schema check failed; the suffix is the Zod issue code. |
 
 ## Warnings
@@ -86,6 +88,10 @@ when the editor's own model cannot represent it. Anything that hinges on
 | `disabled-transition-on-active-workflow` | transition | yes | A disabled transition inside an active workflow. |
 | `lifecycle-path-in-simple` | criterion | — | A simple criterion path looks like a `$._meta` lifecycle path. |
 | `function-without-quick-exit` | criterion | — | A function criterion has no local quick-exit guard (every eval calls out). |
+| `cyoda-version-unresolvable` | — | — | `meta.cyodaVersion` names a cyoda-go dialect this build does not ship (e.g. the removed `"0.7"`), so the workflow schema version-tag checks are skipped. Everything else still validates. |
+| `processor-keys-dropped` | — | — | Import only. Processor keys outside the cyoda-go wire format were discarded; the editor cannot round-trip them. Also on `ParseResult.warnings`. |
+| `processor-config-keys-dropped` | — | — | Import only. Processor `config` keys outside the cyoda-go wire format were discarded — the editor's only signal that it dropped part of a processor's meaning. Also on `ParseResult.warnings`. |
+| `dialect-warning` | — | — | Import only. A `toCanonical` warning from a host-registered dialect whose shape this library does not recognise; surfaced verbatim. |
 
 ## Notes
 

@@ -4,7 +4,7 @@ import {
   UNSUPPORTED_OPERATORS,
 } from "../criteria/operators.js";
 import { validateJsonPathSubset } from "../criteria/jsonPathSubset.js";
-import { getDialect, LATEST_CYODA_VERSION } from "../dialect/index.js";
+import { getDialect, LATEST_CYODA_VERSION, type CyodaDialect } from "../dialect/index.js";
 import { findUnguardedCycles } from "./cycles.js";
 import { idFor as identityIdFor } from "../identity/id-for.js";
 import { NAME_MAX_LENGTH } from "../schema/name.js";
@@ -70,10 +70,30 @@ export function validateSemantics(
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
 
+  // Resolve the target dialect ONCE, and never let its throw escape: this
+  // function is documented to never throw, and `validateAll` /
+  // `validateAfterPatch` / the React derive path all call it without a
+  // try/catch, so a throw here tears the editor down mid-render. It is not
+  // hypothetical — every document saved by a pre-0.8.3 build of this library
+  // carries `meta.cyodaVersion: "0.7"`, and that dialect was removed. Report
+  // it instead, so a user whose document names a dialect this build cannot
+  // resolve is told rather than left with rules silently not running.
+  const cyodaVersion = doc?.meta.cyodaVersion ?? LATEST_CYODA_VERSION;
+  let dialect: CyodaDialect | undefined;
+  try {
+    dialect = getDialect(cyodaVersion);
+  } catch (e) {
+    issues.push({
+      severity: "info",
+      code: "cyoda-version-unresolvable",
+      message: `This document targets cyoda-go schema dialect "${cyodaVersion}", which is not registered, so workflow schema version-tag checks are skipped. ${(e as Error).message}`,
+    });
+  }
+
   issues.push(...duplicateWorkflowNames(session));
 
   for (const wf of session.workflows) {
-    issues.push(...validateWorkflow(wf, doc));
+    issues.push(...validateWorkflow(wf, doc, dialect));
 
     // unguarded-automated-cycle (spec §4): warning, not error — cyoda-go runs
     // cycle detection against the merged STORED result, not the payload, so a
@@ -82,11 +102,29 @@ export function validateSemantics(
     // must not block a save. No `wf.active` check: the server does not skip
     // inactive workflows during cycle detection.
     if (session.allowCycles !== true) {
-      for (const cycle of findUnguardedCycles(wf)) {
+      // Both the cycle count and each cycle's path are capped by
+      // `findUnguardedCycles` — a pathological workflow otherwise renders tens
+      // of thousands of multi-KB messages into the issues drawer. Say so in the
+      // message wherever output was cut, so a truncated report never reads as a
+      // complete one.
+      const report = findUnguardedCycles(wf);
+      for (const cycle of report.cycles) {
+        const omitted = cycle.length - cycle.path.length;
+        const rendered =
+          cycle.path.join(" -> ") +
+          (omitted > 0 ? ` -> ... (${omitted} more states omitted)` : "");
         issues.push({
           severity: "warning",
           code: "unguarded-automated-cycle",
-          message: `Workflow "${wf.name}": infinite loop detected: ${cycle.join(" -> ")} via unguarded automated transitions. cyoda-go rejects this import unless allowCycles is set.`,
+          message: `Workflow "${wf.name}": infinite loop detected: ${rendered} via unguarded automated transitions. cyoda-go rejects this import unless allowCycles is set.`,
+          ...idFor(doc, wf.name, "workflow"),
+        });
+      }
+      if (report.total > report.cycles.length) {
+        issues.push({
+          severity: "warning",
+          code: "unguarded-automated-cycle",
+          message: `Workflow "${wf.name}": ${report.total} unguarded automated cycles detected; only the first ${report.cycles.length} are listed. cyoda-go rejects this import unless allowCycles is set.`,
           ...idFor(doc, wf.name, "workflow"),
         });
       }
@@ -141,6 +179,7 @@ function duplicateWorkflowNames(session: WorkflowSession): ValidationIssue[] {
 function validateWorkflow(
   wf: Workflow,
   doc?: WorkflowEditorDocument,
+  dialect?: CyodaDialect,
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
 
@@ -162,8 +201,11 @@ function validateWorkflow(
   }
 
   // workflow schema version tag (spec §4)
-  {
-    const dialect = getDialect(doc?.meta.cyodaVersion ?? LATEST_CYODA_VERSION);
+  // `dialect` is undefined when the document names one this build cannot
+  // resolve; `validateSemantics` has already reported that once as
+  // `cyoda-version-unresolvable`. Skip the rule rather than guessing which
+  // tags some unknown server accepts.
+  if (dialect) {
     const accepted = dialect.acceptedSchemaVersions;
     // Absent means this server does not validate the tag — skip entirely.
     if (accepted) {

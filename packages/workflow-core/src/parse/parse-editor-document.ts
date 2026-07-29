@@ -7,7 +7,7 @@ import { getDialect, LATEST_CYODA_VERSION } from "../dialect/index.js";
 import { validateSemantics } from "../validate/semantic.js";
 import { zodErrorToIssues } from "../validate/schema.js";
 import { ParseJsonError } from "./errors.js";
-import type { ParseResult } from "./parse-import.js";
+import { dialectWarningToIssue, type ParseResult } from "./parse-import.js";
 
 const EditorDocumentSchema = z.object({
   session: z.object({
@@ -69,6 +69,10 @@ export function parseEditorDocument(
     };
   }
 
+  // Mirror the dialect's dropped-key notes into `issues` — the surface every
+  // consumer already renders. `warnings` stays as-is: public API.
+  const warningIssues = warnings.map(dialectWarningToIssue);
+
   const inner = ImportPayloadSchema.omit({ importMode: true }).extend({
     importMode: z.enum(["MERGE", "REPLACE", "ACTIVATE"]),
   });
@@ -80,7 +84,7 @@ export function parseEditorDocument(
   if (!sessionResult.success) {
     return {
       ok: false,
-      issues: zodErrorToIssues(sessionResult.error),
+      issues: [...zodErrorToIssues(sessionResult.error), ...warningIssues],
       ...(warnings.length > 0 ? { warnings } : {}),
     };
   }
@@ -100,7 +104,7 @@ export function parseEditorDocument(
     outerResult.data.meta as WorkflowEditorDocument["meta"],
   );
   const document: WorkflowEditorDocument = { session, meta };
-  const issues = validateSemantics(session, document);
+  const issues = [...validateSemantics(session, document), ...warningIssues];
   const hasError = issues.some((i) => i.severity === "error");
 
   return {
