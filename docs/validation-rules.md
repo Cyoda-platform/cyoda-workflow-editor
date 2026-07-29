@@ -39,6 +39,7 @@ code is added or removed without updating this file.
 | `schedule-mode-required` | transition | yes | A `schedule` has neither `delayMs` nor `function` (or both); exactly one is required. |
 | `schedule-manual-conflict` | transition | yes | A transition has both `schedule` and `manual: true`; the two are mutually exclusive. |
 | `schedule-function-incomplete` | transition | yes | `schedule.function` is missing `name` or `calculationNodesTags`. |
+| `workflow-schema-version-malformed` | workflow | yes | The in-document `version` tag is not `MAJOR.MINOR`, uses an unsupported major, or exceeds the max minor the target server accepts. |
 | `schema-*` | varies | — | A canonical Zod schema check failed; the suffix is the Zod issue code. |
 
 ## Warnings
@@ -57,6 +58,7 @@ code is added or removed without updating this file.
 | `unreachable-state` | state | yes | A state is unreachable from the initial state. |
 | `null-criterion-not-last` | transition | yes | An automated no-criterion transition isn't last, so it always fires first; later automated transitions on the state are unreachable (they're named in the message). |
 | `schedule-timeout-negative` | transition | yes | `schedule.timeoutMs` is negative; the server accepts it but treats it like `0`. |
+| `workflow-schema-version-outdated` | workflow | yes | The in-document `version` tag is below the minimum minor the target server accepts; carries a `fix` that rewrites it to the dialect's current tag. |
 
 ## Info
 

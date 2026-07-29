@@ -202,7 +202,7 @@ describe("canonical JSON tolerance", () => {
     importMode: "REPLACE",
     workflows: [
       {
-        version: "1",
+        version: "1.3",
         name: "HelloWorldWorkflow",
         initialState: "START",
         active: true,

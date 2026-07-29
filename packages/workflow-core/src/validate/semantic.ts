@@ -4,6 +4,7 @@ import {
   UNSUPPORTED_OPERATORS,
 } from "../criteria/operators.js";
 import { validateJsonPathSubset } from "../criteria/jsonPathSubset.js";
+import { getDialect, LATEST_CYODA_VERSION } from "../dialect/index.js";
 import { idFor as identityIdFor } from "../identity/id-for.js";
 import { NAME_MAX_LENGTH } from "../schema/name.js";
 import type { Criterion } from "../types/criterion.js";
@@ -17,6 +18,12 @@ import { isValidName, walkCriteria } from "./helpers.js";
 const LIFECYCLE_FIELDS = new Set(["state", "creationDate", "previousTransition"]);
 
 export const ANNOTATIONS_MAX_BYTES = 64 * 1024;
+
+/**
+ * Grammar for the in-document workflow schema `version` tag, mirrored exactly
+ * from the server (spec §4): MAJOR.MINOR, no leading zeros.
+ */
+const TAG_RE = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
 
 /**
  * Operator warnings for a criterion's `operation` (issue #22).
@@ -125,6 +132,64 @@ function validateWorkflow(
       message: `Workflow "${wf.name}" initialState "${wf.initialState}" is not a state.`,
       ...idFor(doc, wf.name, "workflow"),
     });
+  }
+
+  // workflow schema version tag (spec §4)
+  {
+    const dialect = getDialect(doc?.meta.cyodaVersion ?? LATEST_CYODA_VERSION);
+    const accepted = dialect.acceptedSchemaVersions;
+    // Absent means this server does not validate the tag — skip entirely.
+    if (accepted) {
+      const m = TAG_RE.exec(wf.version);
+      if (!m) {
+        issues.push({
+          severity: "error",
+          code: "workflow-schema-version-malformed",
+          message: `Workflow "${wf.name}": workflow schema version "${wf.version}" is not in MAJOR.MINOR form.`,
+          ...idFor(doc, wf.name, "workflow"),
+        });
+      } else {
+        const major = Number(m[1]);
+        const minor = Number(m[2]);
+        const range = accepted.find((r) => r.major === major);
+        if (!range) {
+          issues.push({
+            severity: "error",
+            code: "workflow-schema-version-malformed",
+            message: `Workflow "${wf.name}": workflow schema major version ${major} unsupported on this server; supported majors: [${accepted.map((r) => r.major).join(", ")}].`,
+            ...idFor(doc, wf.name, "workflow"),
+          });
+        } else if (minor > range.maxMinor) {
+          issues.push({
+            severity: "error",
+            code: "workflow-schema-version-malformed",
+            message: `Workflow "${wf.name}": this server supports workflow schema up to ${range.major}.${range.maxMinor}; payload declares ${wf.version}.`,
+            ...idFor(doc, wf.name, "workflow"),
+          });
+        } else if (minor < range.minMinor) {
+          // Warning, not error: the user must open the file to fix it, and
+          // rewriting it silently would churn bytes they did not ask to change.
+          issues.push({
+            severity: "warning",
+            code: "workflow-schema-version-outdated",
+            message: `Workflow "${wf.name}": workflow schema ${wf.version} is no longer accepted; minimum supported in major ${range.major} is ${range.major}.${range.minMinor}.`,
+            ...idFor(doc, wf.name, "workflow"),
+            fix: {
+              label: `Update schema version to ${dialect.schemaVersionTag}`,
+              apply: (d) => ({
+                ...d,
+                session: {
+                  ...d.session,
+                  workflows: d.session.workflows.map((w) =>
+                    w.name === wf.name ? { ...w, version: dialect.schemaVersionTag } : w,
+                  ),
+                },
+              }),
+            },
+          });
+        }
+      }
+    }
   }
 
   // name regex

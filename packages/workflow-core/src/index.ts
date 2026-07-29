@@ -45,6 +45,7 @@ export type {
   TransitionPointer,
   TransitionSchedule,
   CriterionPointer,
+  ValidationFix,
   ValidationIssue,
   Workflow,
   WorkflowApi,
