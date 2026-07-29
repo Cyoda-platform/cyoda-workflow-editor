@@ -48,6 +48,8 @@ code is added or removed without updating this file.
 | `not-with-multiple-conditions` | criterion | — | A `NOT` group carries more than one condition. |
 | `start-new-tx-without-commit-before-dispatch` | processor | yes | `startNewTxOnDispatch` is set but the mode is not `COMMIT_BEFORE_DISPATCH`. |
 | `crossover-without-async-result` | processor | — | `crossoverToAsyncMs` is set but `asyncResult` is not true. |
+| `processor-type-internalized` | processor | yes | Processor `type` is the reserved value `"internalized"`; cyoda-go accepts it at import but rejects it at dispatch. |
+| `processor-type-non-canonical` | processor | yes | Processor `type` is neither `"externalized"` nor empty; cyoda-go stores and returns it verbatim today. |
 | `criterion-depth-warning` | criterion | — | Criterion tree depth is near the engine limit. |
 | `unreachable-state` | state | yes | A state is unreachable from the initial state. |
 | `null-criterion-not-last` | transition | yes | An automated no-criterion transition isn't last, so it always fires first; later automated transitions on the state are unreachable (they're named in the message). |

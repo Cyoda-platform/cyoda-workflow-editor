@@ -233,3 +233,71 @@ describe("processor modal UX", () => {
     });
   });
 });
+
+describe("processor modal with a non-canonical type (spec §1, task-4)", () => {
+  it("shows a SCHEDULED processor's fields instead of a blank form", () => {
+    const { processorUuids } = renderTransitionForm([
+      { type: "SCHEDULED", name: "legacy-proc", executionMode: "SYNC" },
+    ]);
+
+    fireEvent.click(screen.getByTestId(`processor-edit-0`));
+    expect(processorUuids).toHaveLength(1);
+    expect((screen.getByTestId("processor-name-input") as HTMLInputElement).value).toBe(
+      "legacy-proc",
+    );
+    expect(
+      (screen.getByTestId("processor-execution-mode") as HTMLSelectElement).value,
+    ).toBe("SYNC");
+    expect(screen.getByTestId("processor-non-canonical-type-warning")).toBeTruthy();
+  });
+
+  it("renders every field disabled and does not let Apply rewrite the type", () => {
+    const { onDispatch } = renderTransitionForm([{ type: "SCHEDULED", name: "legacy-proc" }]);
+
+    fireEvent.click(screen.getByTestId("processor-edit-0"));
+    // Every editable control is disabled — a real user cannot change a field.
+    expect((screen.getByTestId("processor-name-input") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByTestId("processor-tags-input") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByTestId("processor-async-result") as HTMLInputElement).disabled).toBe(
+      true,
+    );
+    expect((screen.getByTestId("processor-modal-apply") as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+
+    fireEvent.click(screen.getByTestId("processor-modal-apply"));
+    // Apply is disabled while read-only, so no patch is dispatched at all —
+    // the type can't be rewritten because there's nothing to apply.
+    expect(onDispatch).not.toHaveBeenCalled();
+  });
+
+  it("shows a dispatch-specific warning for the reserved internalized type", () => {
+    renderTransitionForm([{ type: "internalized", name: "p" }]);
+
+    fireEvent.click(screen.getByTestId("processor-edit-0"));
+    expect(screen.getByTestId("processor-non-canonical-type-warning").textContent).toMatch(
+      /dispatch/i,
+    );
+  });
+
+  it("treats an empty type as canonical and keeps the form editable", () => {
+    const { onDispatch, processorUuids } = renderTransitionForm([
+      { type: "", name: "legacy-empty", executionMode: "SYNC" },
+    ]);
+
+    fireEvent.click(screen.getByTestId("processor-edit-0"));
+    expect(screen.queryByTestId("processor-non-canonical-type-warning")).toBeNull();
+    expect((screen.getByTestId("processor-name-input") as HTMLInputElement).disabled).toBe(false);
+
+    fireEvent.change(screen.getByTestId("processor-name-input"), {
+      target: { value: "renamed" },
+    });
+    fireEvent.click(screen.getByTestId("processor-modal-apply"));
+
+    expect(onDispatch).toHaveBeenCalledWith({
+      op: "updateProcessor",
+      processorUuid: processorUuids[0],
+      updates: { type: "", name: "renamed", executionMode: "SYNC" },
+    });
+  });
+});

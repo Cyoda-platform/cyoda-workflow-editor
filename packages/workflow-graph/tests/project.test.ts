@@ -202,4 +202,43 @@ describe("projectToGraph", () => {
     expect(edge && edge.kind === "transition" && edge.summary.processor?.kind).toBe("single");
     expect(edge && edge.kind === "transition" && edge.summary.execution?.kind).toBe("sync");
   });
+
+  // cyoda-go 0.8.3 round-trips processor `type` verbatim (task-4-brief.md
+  // §5c). A preserved non-canonical type must still surface an execution
+  // badge — a stale `type !== "externalized"` gate would silently drop it.
+  test("execution badge is not dropped for a preserved non-canonical processor type", () => {
+    const graph = project({
+      importMode: "MERGE",
+      workflows: [
+        {
+          version: "1.0",
+          name: "wf",
+          initialState: "a",
+          active: true,
+          states: {
+            a: {
+              transitions: [
+                {
+                  name: "process",
+                  next: "b",
+                  manual: false,
+                  disabled: false,
+                  processors: [
+                    {
+                      type: "SCHEDULED",
+                      name: "legacy",
+                      executionMode: "SYNC",
+                    },
+                  ],
+                },
+              ],
+            },
+            b: { transitions: [] },
+          },
+        },
+      ],
+    });
+    const edge = graph.edges.find((e) => e.kind === "transition");
+    expect(edge && edge.kind === "transition" && edge.summary.execution?.kind).toBe("sync");
+  });
 });
