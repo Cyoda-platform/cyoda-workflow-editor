@@ -43,7 +43,8 @@ import type { CyodaDialect, ToCanonicalResult } from "./dialect.js";
 export const cyoda08Dialect: CyodaDialect = {
   version: "0.8",
   toCanonical(raw: unknown): ToCanonicalResult {
-    return { value: coerceCanonicalDefaults(normalizeOperatorAlias(raw)), warnings: [] };
+    const normalized = normalize08(coerceCanonicalDefaults(normalizeOperatorAlias(raw)));
+    return { value: normalized.value, warnings: normalized.warnings };
   },
   workflowsToWire(workflows: Workflow[]): Array<Record<string, unknown>> {
     return workflows.map((wf) =>
@@ -103,6 +104,79 @@ export const V0_8_WIRE_FIELDS = {
   processorConfig: PROCESSOR_CONFIG_FIELDS,
   schedule: SCHEDULE_FIELDS,
 } as const;
+
+const CONFIG_KEYS = new Set(PROCESSOR_CONFIG_FIELDS as readonly string[]);
+
+/**
+ * Reshape a raw 0.8.3 tree into what the canonical schema accepts:
+ *
+ * - Drop `delayMs` when `<= 0`. cyoda-go's presence test is `> 0`, not "key
+ *   exists" — and its own export emits `delayMs: 0` beside `function`.
+ * - Strip `null`-valued optional keys. The server accepts `null` for nearly
+ *   every optional field; Zod's `.optional()` rejects it.
+ * - Report discarded processor config keys. Zod strips unknown keys silently,
+ *   which would turn an invalid processor into a quietly-emptied one.
+ */
+function normalize08(value: unknown): { value: unknown; warnings: string[] } {
+  const warnings: string[] = [];
+  if (!isObj(value) || !Array.isArray(value["workflows"])) return { value, warnings };
+
+  const stripNulls = (o: Record<string, unknown>): Record<string, unknown> => {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(o)) if (v !== null) out[k] = v;
+    return out;
+  };
+
+  const workflows = (value["workflows"] as unknown[]).map((wf) => {
+    if (!isObj(wf) || !isObj(wf["states"])) return wf;
+    const w = stripNulls(wf);
+    const states = w["states"] as Record<string, unknown>;
+    const nextStates: Record<string, unknown> = {};
+
+    for (const [code, state] of Object.entries(states)) {
+      if (!isObj(state) || !Array.isArray(state["transitions"])) {
+        nextStates[code] = state;
+        continue;
+      }
+      const s = stripNulls(state);
+      s["transitions"] = (state["transitions"] as unknown[]).map((t) => {
+        if (!isObj(t)) return t;
+        const tx = stripNulls(t);
+
+        if (isObj(tx["schedule"])) {
+          const sched = stripNulls(tx["schedule"] as Record<string, unknown>);
+          if (typeof sched["delayMs"] === "number" && sched["delayMs"] <= 0) {
+            delete sched["delayMs"];
+          }
+          if (isObj(sched["function"])) {
+            sched["function"] = stripNulls(sched["function"] as Record<string, unknown>);
+          }
+          tx["schedule"] = sched;
+        }
+
+        if (Array.isArray(tx["processors"])) {
+          tx["processors"] = (tx["processors"] as unknown[]).map((p) => {
+            if (!isObj(p) || !isObj(p["config"])) return p;
+            const cfg = p["config"] as Record<string, unknown>;
+            const dropped = Object.keys(cfg).filter((k) => !CONFIG_KEYS.has(k));
+            if (dropped.length > 0) {
+              warnings.push(
+                `processor-config-keys-dropped:${String(p["name"])}:${dropped.join(",")}`,
+              );
+            }
+            return p;
+          });
+        }
+        return tx;
+      });
+      nextStates[code] = s;
+    }
+    w["states"] = nextStates;
+    return w;
+  });
+
+  return { value: { ...value, workflows }, warnings };
+}
 
 /** Copy only `allowed` keys from `obj`, preserving allowlist order. */
 function pick(obj: Record<string, unknown>, allowed: readonly string[]): Record<string, unknown> {
