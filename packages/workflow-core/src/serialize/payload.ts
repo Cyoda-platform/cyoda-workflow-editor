@@ -28,6 +28,7 @@ export function serializeImportPayload(
 ): string {
   const payload = {
     importMode: doc.session.importMode,
+    ...(doc.session.allowCycles === true ? { allowCycles: true } : {}),
     workflows: wireWorkflows(doc, options),
   };
   return prettyStringify(payload);
@@ -69,6 +70,9 @@ export function serializeEditorDocument(
     session: {
       entity: doc.session.entity,
       importMode: doc.session.importMode,
+      ...(doc.session.allowCycles !== undefined
+        ? { allowCycles: doc.session.allowCycles }
+        : {}),
       workflows: wireWorkflows(doc, options),
     },
     meta: doc.meta,

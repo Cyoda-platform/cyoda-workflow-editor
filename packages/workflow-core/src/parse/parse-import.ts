@@ -120,6 +120,9 @@ export function parseImportPayload(
   const session: WorkflowSession = {
     entity: null,
     importMode: schemaResult.data.importMode,
+    ...(schemaResult.data.allowCycles !== undefined
+      ? { allowCycles: schemaResult.data.allowCycles }
+      : {}),
     workflows: normalizedWorkflows,
   };
 

@@ -18,6 +18,7 @@ const EditorDocumentSchema = z.object({
       })
       .nullable(),
     importMode: z.enum(["MERGE", "REPLACE", "ACTIVATE"]),
+    allowCycles: z.boolean().optional(),
     workflows: z.array(z.unknown()),
   }),
   meta: z
@@ -51,6 +52,7 @@ export function parseEditorDocument(
   });
   const sessionResult = inner.safeParse({
     importMode: outerResult.data.session.importMode,
+    allowCycles: outerResult.data.session.allowCycles,
     workflows: (aliased as { workflows: unknown }).workflows,
   });
   if (!sessionResult.success) {
@@ -61,6 +63,9 @@ export function parseEditorDocument(
   const session = {
     entity: outerResult.data.session.entity,
     importMode: sessionResult.data.importMode,
+    ...(sessionResult.data.allowCycles !== undefined
+      ? { allowCycles: sessionResult.data.allowCycles }
+      : {}),
     workflows: normalizedWorkflows,
   };
 

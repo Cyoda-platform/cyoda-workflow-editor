@@ -4,6 +4,7 @@ import { WorkflowSchema } from "./workflow.js";
 
 export const ImportPayloadSchema = z.object({
   importMode: z.enum(["MERGE", "REPLACE", "ACTIVATE"]),
+  allowCycles: z.boolean().optional(),
   workflows: z.array(WorkflowSchema).min(1),
 });
 

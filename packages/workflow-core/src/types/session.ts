@@ -10,11 +10,13 @@ export interface EntityIdentity {
 export interface WorkflowSession {
   entity: EntityIdentity | null;
   importMode: ImportMode;
+  allowCycles?: boolean;
   workflows: Workflow[];
 }
 
 export interface ImportPayload {
   importMode: ImportMode;
+  allowCycles?: boolean;
   workflows: Workflow[];
 }
 
