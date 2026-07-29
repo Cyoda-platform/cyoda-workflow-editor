@@ -537,10 +537,12 @@ export function WorkflowEditor({
     [actions],
   );
 
-  // No dedicated DomainPatch op carries session.allowCycles through applyPatch's
-  // "replaceSession" case (it only copies workflows/importMode/entity), so this
-  // writes the document directly via silentReplace — bumping meta.revision by
-  // hand, same as handleAutoLayout below, since applyPatch normally does that.
+  // No dedicated DomainPatch op targets session.allowCycles on its own — the
+  // only patch that touches it is the coarse "replaceSession" snapshot, which
+  // would also stomp on workflows/importMode/entity/UI state we don't want to
+  // disturb here. So this writes the document directly via silentReplace —
+  // bumping meta.revision by hand, same as handleAutoLayout below, since
+  // applyPatch normally does that — deliberately staying out of undo history.
   const handleAllowCyclesChange = useCallback(
     (checked: boolean) => {
       actions.silentReplace(

@@ -12,9 +12,15 @@ import type { CyodaDialect, ToCanonicalResult } from "./dialect.js";
  * note in `ai/cyoda-schema-versions.md`).
  *
  * Deltas from the 0.7 dialect:
- * - **`scheduled` processor removed.** The type no longer exists in the wire
- *   format or the canonical model, so — unlike 0.7 — there is nothing to drop in
- *   `toCanonical` and no warning is ever produced.
+ * - **`scheduled` processor no longer specially handled.** The dedicated
+ *   `ScheduledProcessorSchema` type is gone, but `Processor.type` is an open
+ *   string (cyoda-go 0.8.3 round-trips whatever value it was given), so
+ *   `{type:"scheduled"}` still parses and survives into the canonical model —
+ *   unlike 0.7, `toCanonical` has nothing to drop and produces no
+ *   `dropped-scheduled-processor` warning. It instead surfaces as a
+ *   `processor-type-non-canonical` semantic-validation warning (the server
+ *   accepts it and treats it as `externalized` today, per that warning's own
+ *   message).
  * - **`transitions[].schedule` passed through and emitted.** `toCanonical` lets
  *   it flow straight to the canonical model (already the right shape);
  *   `workflowsToWire` emits it when present. 0.7 omitted it entirely.

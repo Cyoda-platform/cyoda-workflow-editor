@@ -61,4 +61,31 @@ describe("demo workflow fixtures", () => {
     expect(kitchenSink.rawJson).not.toMatch(/"delaySeconds"/);
     expect(kitchenSink.rawJson).toMatch(/"delayMs"\s*:\s*300000/);
   });
+
+  it("kitchen-sink's deliberate unguarded loopback (queued -> sending -> queued) still surfaces its warning", () => {
+    const kitchenSink = realFixtures.find((f) => f.slug === "kitchen-sink");
+    if (!kitchenSink) throw new Error("kitchen-sink fixture missing");
+
+    // Falsifiable both ways:
+    //  - if a future edit re-adds `"allowCycles": true` to the fixture (as a
+    //    prior round of this task's own work mistakenly did, to make the raw
+    //    JSON import cleanly), semantic.ts gates the *entire* cycle check on
+    //    `session.allowCycles !== true` and this warning disappears —
+    //    silently hiding the exact feature the fixture exists to demonstrate
+    //    (the catalog's own "warnings" tag would then be a lie).
+    //  - if the loopback transitions are ever "fixed" into a guarded cycle
+    //    (e.g. a criterion added to `retry`), the warning also disappears.
+    const payload = buildWorkflowPayload(kitchenSink.rawJson);
+    const result = parseImportPayload(payload);
+    expect(result.document).toBeTruthy();
+
+    const cycleIssues = (result.issues ?? []).filter((issue) => issue.code === "unguarded-automated-cycle");
+    expect(cycleIssues).toHaveLength(1);
+    expect(cycleIssues[0]?.severity).toBe("warning");
+    expect(cycleIssues[0]?.message).toContain("queued -> sending -> queued");
+
+    // The raw fixture must not carry the flag that would suppress the above.
+    const parsedRaw = JSON.parse(kitchenSink.rawJson) as { allowCycles?: boolean };
+    expect(parsedRaw.allowCycles).toBeUndefined();
+  });
 });

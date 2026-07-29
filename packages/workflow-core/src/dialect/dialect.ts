@@ -5,8 +5,9 @@ import type { CyodaSchemaVersion } from "./version.js";
  * The result of rewriting a raw wire tree into the canonical raw shape.
  *
  * - `value` is the canonical raw value handed to the Zod schema.
- * - `warnings` are human-readable notes about lossy or dropped content (e.g. a
- *   v0.7 `scheduled` processor removed during normalisation). Empty when none.
+ * - `warnings` are human-readable notes about lossy or dropped content (e.g.
+ *   `processor-config-keys-dropped:<name>:<keys>` when the 0.8 dialect strips
+ *   a processor-config key cyoda-go doesn't recognise). Empty when none.
  */
 export interface ToCanonicalResult {
   value: unknown;

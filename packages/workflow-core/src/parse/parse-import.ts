@@ -25,8 +25,9 @@ export interface ParseResult<T> {
   document?: WorkflowEditorDocument;
   issues: ValidationIssue[];
   /**
-   * Non-fatal notes from the dialect's `toCanonical` pass — e.g. a v0.7
-   * `scheduled` processor dropped during normalisation. Additive: callers that
+   * Non-fatal notes from the dialect's `toCanonical` pass — e.g.
+   * `processor-config-keys-dropped:<name>:<keys>` when the 0.8 dialect strips
+   * a processor-config key cyoda-go doesn't recognise. Additive: callers that
    * do not read it are unaffected. Omitted when there are no warnings.
    */
   warnings?: string[];

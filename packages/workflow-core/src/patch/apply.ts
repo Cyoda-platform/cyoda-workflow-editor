@@ -8,6 +8,22 @@ import type { Workflow } from "../types/workflow.js";
 import { validateSemantics } from "../validate/semantic.js";
 import type { ValidationIssue } from "../types/validation.js";
 
+// Exhaustiveness guard for the "replaceSession" case below: it assigns each
+// WorkflowSession field by name rather than delegating to Object.assign (see
+// that case's comment for why), so nothing statically forces every field to
+// be handled. `allowCycles` was silently dropped once already by exactly
+// this class of bug. If a field is added to WorkflowSession without also
+// being added to the exclusion list below, this type resolves to `never`,
+// and the assignment two lines down fails to compile ("Type 'true' is not
+// assignable to type 'never'") — surfacing the gap at the next `tsc` run
+// instead of at runtime.
+type _AllSessionFieldsHandled =
+  Exclude<keyof WorkflowSession, "entity" | "importMode" | "workflows" | "allowCycles"> extends never
+    ? true
+    : never;
+const _allSessionFieldsHandled: _AllSessionFieldsHandled = true;
+void _allSessionFieldsHandled;
+
 /**
  * Apply a patch to a document, returning a new document.
  * - Refreshes synthetic IDs for the new session.

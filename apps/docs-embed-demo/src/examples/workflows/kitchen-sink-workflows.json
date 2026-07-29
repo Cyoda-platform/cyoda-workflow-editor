@@ -1,6 +1,5 @@
 {
   "importMode": "MERGE",
-  "allowCycles": true,
   "workflows": [
     {
       "version": "1.3",
