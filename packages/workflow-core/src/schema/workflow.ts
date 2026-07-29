@@ -6,15 +6,28 @@ import { ProcessorSchema } from "./processor.js";
 
 export { AnnotationsSchema };
 
-/**
- * Transition-level scheduling (cyoda-go v0.8.0). A schema/SPI placeholder: a
- * scheduled transition can be configured and imported, but the workflow engine
- * does not yet execute it. The field does not exist in the v0.7 wire format.
- */
-export const TransitionScheduleSchema = z.object({
-  delayMs: z.number().int().positive(),
-  timeoutMs: z.number().int().positive().optional(),
+export const ScheduleFunctionSchema = z.object({
+  name: z.string().min(1),
+  resultKind: z.literal("Schedule"),
+  calculationNodesTags: z.string().min(1),
+  attachEntity: z.boolean().optional(),
+  context: z.string().optional(),
+  // No lower bound — the server accepts a negative value (verified).
+  responseTimeoutMs: z.number().int().optional(),
 });
+
+export const TransitionScheduleSchema = z
+  .object({
+    delayMs: z.number().int().positive().optional(),
+    function: ScheduleFunctionSchema.optional(),
+    // Any integer: the server accepts timeoutMs: -1 despite the OpenAPI
+    // declaring minimum 0, and 0 is the strictest legal setting.
+    timeoutMs: z.number().int().optional(),
+  })
+  .refine(
+    (s) => (s.delayMs !== undefined) !== (s.function !== undefined),
+    { message: "exactly one of schedule.delayMs or schedule.function is required" },
+  );
 
 export const TransitionSchema = z.object({
   name: NameSchema,
