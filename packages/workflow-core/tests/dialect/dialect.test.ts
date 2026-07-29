@@ -124,27 +124,34 @@ describe("pluggability: a host-registered dialect round-trips", () => {
   });
 });
 
-// KNOWN GAP (task-1-report.md): this is expected to fail until a later task in
-// the cyoda-go-0.8.3 plan widens `ExternalizedProcessorSchema.type` (currently
-// `z.literal("externalized")` in schema/processor.ts) to an open string. Task 1
-// only removes the dialect-level rewrite that used to coerce "EXTERNAL" ->
-// "externalized"; without that rewrite AND without a schema widening, a raw
-// uppercase `type` now fails schema validation instead of being silently
-// mutated. `test.fails` keeps the suite green while asserting the *current*
-// (temporary) behaviour, and will start failing loudly — as a reminder to
-// remove `.fails` — once the schema widening lands.
-test.fails("0.8 preserves a legacy uppercase processor type verbatim", () => {
-  const raw = JSON.stringify({
-    importMode: "MERGE",
-    workflows: [{
-      version: "1.3", name: "w", initialState: "A", active: true,
-      states: { A: { transitions: [{
-        name: "t", next: "A", manual: true,
-        processors: [{ type: "EXTERNAL", name: "p" }],
-      }] } },
-    }],
+describe("0.8 known gap: uppercase processor type (task-1-report.md)", () => {
+  // KNOWN GAP: a later task in the cyoda-go-0.8.3 plan widens
+  // `ExternalizedProcessorSchema.type` (currently `z.literal("externalized")`
+  // in schema/processor.ts) to an open string. Task 1 only removes the
+  // dialect-level rewrite that used to coerce "EXTERNAL" -> "externalized";
+  // without that rewrite AND without a schema widening, a raw uppercase
+  // `type` now fails schema validation instead of being silently mutated or
+  // preserved verbatim. This test pins the *current*, temporary failure mode
+  // specifically (ok: false, at least one error-severity issue) rather than
+  // using `test.fails`, which would swallow any thrown/failed result — including
+  // an unrelated regression — as an "expected failure". When the schema widens,
+  // this assertion will start failing (parsed.ok flips to true), which is the
+  // signal to replace it with a preservation assertion like:
+  //   expect(parsed.document!.session.workflows[0]!.states["A"]!
+  //     .transitions[0]!.processors![0]!.type).toBe("EXTERNAL");
+  test("0.8 currently rejects a legacy uppercase processor type (flip when the schema widens)", () => {
+    const raw = JSON.stringify({
+      importMode: "MERGE",
+      workflows: [{
+        version: "1.3", name: "w", initialState: "A", active: true,
+        states: { A: { transitions: [{
+          name: "t", next: "A", manual: true,
+          processors: [{ type: "EXTERNAL", name: "p" }],
+        }] } },
+      }],
+    });
+    const parsed = parseImportPayload(raw);
+    expect(parsed.ok).toBe(false);
+    expect(parsed.issues.some((i) => i.severity === "error")).toBe(true);
   });
-  const parsed = parseImportPayload(raw);
-  expect(parsed.document!.session.workflows[0]!.states["A"]!.transitions[0]!
-    .processors![0]!.type).toBe("EXTERNAL");
 });
