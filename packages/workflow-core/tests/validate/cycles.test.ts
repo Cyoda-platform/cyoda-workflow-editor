@@ -35,6 +35,17 @@ describe("unguarded automated cycles (spec §4)", () => {
     }))).toBe(true);
   });
 
+  test("explicit criterion: null counts as unguarded, even without normalization", () => {
+    // validateSemantics is called directly here on a raw session — the same
+    // way patch/apply.ts's validateAfterPatch drives live-edit validation,
+    // with no null-stripping normalization pass in between. The detector
+    // must treat a literal `criterion: null` as unguarded on its own terms,
+    // not rely on an upstream pass having already stripped it to absent.
+    expect(has(session({
+      A: { transitions: [T({ name: "s", next: "A", manual: false, criterion: null })] },
+    }))).toBe(true);
+  });
+
   test("still detects a cycle in an INACTIVE workflow", () => {
     // The server does not skip inactive workflows during cycle detection,
     // even though workflow SELECTION skips them at runtime.

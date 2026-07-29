@@ -5,9 +5,14 @@ import type { Workflow } from "../types/workflow.js";
  * shape cyoda-go rejects at import with "infinite loop detected".
  *
  * An edge counts when it is `manual: false`, not `disabled`, and carries no
- * criterion. A `schedule` does NOT exempt an edge: the server rejects an
- * all-scheduled cycle with the same message, and the scheduled-polling pattern
- * 0.8.3 promotes is exactly this shape.
+ * criterion — `criterion` absent OR explicitly `null` both count as unguarded;
+ * checked with `== null` rather than `=== undefined` so this holds regardless
+ * of whether the caller has run Task 7's null-stripping normalization first
+ * (e.g. `validateAfterPatch` calls `validateSemantics` directly on a session
+ * built from raw JSON, with no normalization pass). A `schedule` does NOT
+ * exempt an edge: the server rejects an all-scheduled cycle with the same
+ * message, and the scheduled-polling pattern 0.8.3 promotes is exactly this
+ * shape.
  *
  * NB: this is necessary but NOT sufficient. cyoda-go runs detection against the
  * MERGED STORED result, so a MERGE can be rejected because of a cycle in a
@@ -20,7 +25,7 @@ export function findUnguardedCycles(wf: Workflow): string[][] {
     edges.set(
       code,
       state.transitions
-        .filter((t) => t.manual === false && !t.disabled && t.criterion === undefined)
+        .filter((t) => t.manual === false && !t.disabled && t.criterion == null)
         .map((t) => t.next),
     );
   }
