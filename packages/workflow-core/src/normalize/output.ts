@@ -168,7 +168,9 @@ function outputExternalizedProcessor(
     type: "externalized",
     name: p.name,
   };
-  out["executionMode"] = p.executionMode ?? "ASYNC_NEW_TX";
+  // Omit when absent: the server's documented default at fire is SYNC, and
+  // fabricating ASYNC_NEW_TX invents a mode the user never chose.
+  if (p.executionMode !== undefined) out["executionMode"] = p.executionMode;
   if ("startNewTxOnDispatch" in p && p.startNewTxOnDispatch !== undefined) {
     out["startNewTxOnDispatch"] = p.startNewTxOnDispatch;
   }
@@ -182,8 +184,9 @@ function outputExternalizedProcessor(
 
 function outputExternalizedConfig(cfg: ExternalizedProcessorConfig): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  // attachEntity: omit when false.
-  if (cfg.attachEntity === true) out["attachEntity"] = true;
+  // Explicit false is meaningful: absent attachEntity means true server-side,
+  // so dropping false inverts the user's setting on import.
+  if (cfg.attachEntity !== undefined) out["attachEntity"] = cfg.attachEntity;
   if (cfg.calculationNodesTags !== undefined && cfg.calculationNodesTags !== "") {
     out["calculationNodesTags"] = cfg.calculationNodesTags;
   }
@@ -192,26 +195,25 @@ function outputExternalizedConfig(cfg: ExternalizedProcessorConfig): Record<stri
     out["retryPolicy"] = cfg.retryPolicy;
   }
   if (cfg.context !== undefined && cfg.context !== "") out["context"] = cfg.context;
-  // asyncResult: omit when false.
-  if (cfg.asyncResult === true) out["asyncResult"] = true;
-  // crossoverToAsyncMs: pair-only with asyncResult === true.
-  if (cfg.asyncResult === true && cfg.crossoverToAsyncMs !== undefined) {
+  // The server round-trips an explicit false; only `true` is rejected, and that
+  // is reported by the async-result-unsupported warning, not suppressed here.
+  if (cfg.asyncResult !== undefined) out["asyncResult"] = cfg.asyncResult;
+  // Emitted independently of asyncResult — silently dropping it contradicts
+  // reporting it as a warning.
+  if (cfg.crossoverToAsyncMs !== undefined) {
     out["crossoverToAsyncMs"] = cfg.crossoverToAsyncMs;
   }
   return out;
 }
 
-export function outputFunctionConfig(
-  cfg: NonNullable<Criterion extends { type: "function" } ? never : never> | FunctionConfig,
-): Record<string, unknown> {
-  const c = cfg as FunctionConfig;
+export function outputFunctionConfig(cfg: FunctionConfig): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  if (c.attachEntity === true) out["attachEntity"] = true;
-  if (c.calculationNodesTags !== undefined && c.calculationNodesTags !== "") {
-    out["calculationNodesTags"] = c.calculationNodesTags;
+  if (cfg.attachEntity !== undefined) out["attachEntity"] = cfg.attachEntity;
+  if (cfg.calculationNodesTags !== undefined && cfg.calculationNodesTags !== "") {
+    out["calculationNodesTags"] = cfg.calculationNodesTags;
   }
-  if (c.responseTimeoutMs !== undefined) out["responseTimeoutMs"] = c.responseTimeoutMs;
-  if (c.retryPolicy !== undefined && c.retryPolicy !== "") out["retryPolicy"] = c.retryPolicy;
-  if (c.context !== undefined && c.context !== "") out["context"] = c.context;
+  if (cfg.responseTimeoutMs !== undefined) out["responseTimeoutMs"] = cfg.responseTimeoutMs;
+  if (cfg.retryPolicy !== undefined && cfg.retryPolicy !== "") out["retryPolicy"] = cfg.retryPolicy;
+  if (cfg.context !== undefined && cfg.context !== "") out["context"] = cfg.context;
   return out;
 }

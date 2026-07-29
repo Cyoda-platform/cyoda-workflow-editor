@@ -12,7 +12,9 @@ const OperatorParseSchema = z.string().min(1);
 export const FunctionConfigSchema = z.object({
   attachEntity: z.boolean().optional(),
   calculationNodesTags: z.string().optional(),
-  responseTimeoutMs: z.number().int().nonnegative().optional(),
+  // No lower bound: cyoda-go accepts responseTimeoutMs: -1 (verified). A
+  // .nonnegative() here would reject a payload the server round-trips.
+  responseTimeoutMs: z.number().int().optional(),
   retryPolicy: z.string().optional(),
   context: z.string().optional(),
 });

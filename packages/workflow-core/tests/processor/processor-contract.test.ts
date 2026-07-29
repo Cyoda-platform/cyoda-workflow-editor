@@ -92,7 +92,7 @@ describe("processor OpenAPI contract", () => {
     });
   });
 
-  test("externalized processor without executionMode emits ASYNC_NEW_TX in serialized output", () => {
+  test("externalized processor without executionMode omits it in serialized output", () => {
     const doc = parseDocument(
       basePayload([
         {
@@ -106,7 +106,7 @@ describe("processor OpenAPI contract", () => {
 
     const serialized = JSON.parse(serializeImportPayload(doc));
     const processor = serialized.workflows[0].states.start.transitions[0].processors[0];
-    expect(processor.executionMode).toBe("ASYNC_NEW_TX");
+    expect(processor).not.toHaveProperty("executionMode");
   });
 
   test("unknown externalized config keys are not preserved", () => {
@@ -160,7 +160,7 @@ describe("processor OpenAPI contract", () => {
     );
   });
 
-  test("negative processor timing values are rejected", () => {
+  test("negative responseTimeoutMs parses cleanly; negative crossoverToAsyncMs is rejected", () => {
     const responseTimeout = parseImportPayload(
       JSON.stringify(
         basePayload([
@@ -173,7 +173,7 @@ describe("processor OpenAPI contract", () => {
         ]),
       ),
     );
-    expect(responseTimeout.issues.some((issue) => issue.severity === "error")).toBe(true);
+    expect(responseTimeout.issues.some((issue) => issue.severity === "error")).toBe(false);
 
     const crossover = parseImportPayload(
       JSON.stringify(
