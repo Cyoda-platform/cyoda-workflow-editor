@@ -240,6 +240,45 @@ function validateWorkflow(
         }
       }
 
+      // scheduled-transition rules (spec §4)
+      if (t.schedule !== undefined) {
+        const modes = [t.schedule.delayMs !== undefined, t.schedule.function !== undefined]
+          .filter(Boolean).length;
+        if (modes !== 1) {
+          issues.push({
+            severity: "error",
+            code: "schedule-mode-required",
+            message: `Transition "${t.name}": exactly one of schedule.delayMs or schedule.function is required.`,
+            ...transitionTargetId(doc, wf.name, stateCode, index),
+          });
+        }
+        if (t.manual === true) {
+          issues.push({
+            severity: "error",
+            code: "schedule-manual-conflict",
+            message: `Transition "${t.name}": manual and scheduled are mutually exclusive.`,
+            ...transitionTargetId(doc, wf.name, stateCode, index),
+          });
+        }
+        const fn = t.schedule.function;
+        if (fn && (fn.name.trim() === "" || fn.calculationNodesTags.trim() === "")) {
+          issues.push({
+            severity: "error",
+            code: "schedule-function-incomplete",
+            message: `Transition "${t.name}": schedule.function requires name and calculationNodesTags.`,
+            ...transitionTargetId(doc, wf.name, stateCode, index),
+          });
+        }
+        if (t.schedule.timeoutMs !== undefined && t.schedule.timeoutMs < 0) {
+          issues.push({
+            severity: "warning",
+            code: "schedule-timeout-negative",
+            message: `Transition "${t.name}": a negative timeoutMs behaves like 0 (drop on any lateness).`,
+            ...transitionTargetId(doc, wf.name, stateCode, index),
+          });
+        }
+      }
+
       // disabled-transition-on-active-workflow
       if (t.disabled && wf.active) {
         issues.push({
