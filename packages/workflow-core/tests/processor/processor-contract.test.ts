@@ -129,7 +129,7 @@ describe("processor OpenAPI contract", () => {
     expect(serialized).not.toContain("unknownKey");
   });
 
-  test("COMMIT_BEFORE_DISPATCH is accepted by schema and semantic validation warns for invalid startNewTxOnDispatch pairing only", () => {
+  test("COMMIT_BEFORE_DISPATCH is accepted by schema and semantic validation errors for invalid startNewTxOnDispatch pairing only", () => {
     const validDoc = parseDocument(
       basePayload([
         {
@@ -154,9 +154,16 @@ describe("processor OpenAPI contract", () => {
         },
       ]),
     );
-    expect(validateSession(invalidDoc.session).map((issue) => issue.code)).toContain(
+    const invalidIssues = validateSession(invalidDoc.session);
+    expect(invalidIssues.map((issue) => issue.code)).toContain(
       "start-new-tx-without-commit-before-dispatch",
     );
+    // The server hard-400s on this pairing, so this must be an error, not a
+    // warning — a warning would wave through a guaranteed rejection.
+    expect(
+      invalidIssues.find((issue) => issue.code === "start-new-tx-without-commit-before-dispatch")
+        ?.severity,
+    ).toBe("error");
   });
 
   test("negative responseTimeoutMs parses cleanly; negative crossoverToAsyncMs is rejected", () => {
