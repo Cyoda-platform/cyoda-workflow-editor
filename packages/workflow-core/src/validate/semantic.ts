@@ -242,8 +242,16 @@ function validateWorkflow(
 
       // scheduled-transition rules (spec §4)
       if (t.schedule !== undefined) {
-        const modes = [t.schedule.delayMs !== undefined, t.schedule.function !== undefined]
-          .filter(Boolean).length;
+        // `null` is treated as absent for each mode field, matching the
+        // dialect's own null-stripping elsewhere: a mode key present but
+        // explicitly null is not a mode. This block runs on the canonical
+        // model, which can arrive via `applyPatch` (a `Partial<Transition>`
+        // that bypasses Zod) as well as the parse path, so it can't assume
+        // Zod already ruled out `null`/missing string fields.
+        const modes = [
+          t.schedule.delayMs !== undefined && t.schedule.delayMs !== null,
+          t.schedule.function !== undefined && t.schedule.function !== null,
+        ].filter(Boolean).length;
         if (modes !== 1) {
           issues.push({
             severity: "error",
@@ -261,7 +269,10 @@ function validateWorkflow(
           });
         }
         const fn = t.schedule.function;
-        if (fn && (fn.name.trim() === "" || fn.calculationNodesTags.trim() === "")) {
+        if (
+          fn &&
+          ((fn.name ?? "").trim() === "" || (fn.calculationNodesTags ?? "").trim() === "")
+        ) {
           issues.push({
             severity: "error",
             code: "schedule-function-incomplete",

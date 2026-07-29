@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { validateSemantics } from "../../src/validate/semantic.js";
+import { cyoda08Dialect } from "../../src/dialect/cyoda-0_8.js";
 import type { WorkflowSession } from "../../src/types/session.js";
 
 function session(transition: Record<string, unknown>): WorkflowSession {
@@ -13,30 +14,67 @@ function session(transition: Record<string, unknown>): WorkflowSession {
   } as unknown as WorkflowSession;
 }
 
-const codes = (t: Record<string, unknown>) => validateSemantics(session(t)).map((i) => i.code);
+function issuesFor(transition: Record<string, unknown>) {
+  return validateSemantics(session(transition));
+}
+
+const codes = (t: Record<string, unknown>) => issuesFor(t).map((i) => i.code);
 const FN = { name: "c", resultKind: "Schedule", calculationNodesTags: "s" };
 
 describe("schedule semantic rules (spec §4)", () => {
-  test("flags a schedule with neither mode", () => {
-    expect(codes({ name: "t", next: "A", manual: false, schedule: { timeoutMs: 5 } }))
-      .toContain("schedule-mode-required");
+  test("flags a schedule with neither mode, as an error", () => {
+    const issues = issuesFor({ name: "t", next: "A", manual: false, schedule: { timeoutMs: 5 } });
+    const issue = issues.find((i) => i.code === "schedule-mode-required");
+    expect(issue?.severity).toBe("error");
   });
 
-  test("flags a schedule with both modes", () => {
-    expect(codes({ name: "t", next: "A", manual: false, schedule: { delayMs: 5, function: FN } }))
-      .toContain("schedule-mode-required");
+  test("flags a bare schedule: {} (zero modes), as an error", () => {
+    const issues = issuesFor({ name: "t", next: "A", manual: false, schedule: {} });
+    const issue = issues.find((i) => i.code === "schedule-mode-required");
+    expect(issue?.severity).toBe("error");
   });
 
-  test("flags schedule together with manual: true", () => {
-    expect(codes({ name: "t", next: "A", manual: true, schedule: { delayMs: 5 } }))
-      .toContain("schedule-manual-conflict");
+  test("flags a schedule with both modes, as an error", () => {
+    const issues = issuesFor({
+      name: "t", next: "A", manual: false, schedule: { delayMs: 5, function: FN },
+    });
+    const issue = issues.find((i) => i.code === "schedule-mode-required");
+    expect(issue?.severity).toBe("error");
   });
 
-  test("flags an incomplete schedule function", () => {
-    expect(codes({
+  test("flags schedule together with manual: true, as an error", () => {
+    const issues = issuesFor({ name: "t", next: "A", manual: true, schedule: { delayMs: 5 } });
+    const issue = issues.find((i) => i.code === "schedule-manual-conflict");
+    expect(issue?.severity).toBe("error");
+  });
+
+  test("flags an incomplete schedule function, as an error", () => {
+    const issues = issuesFor({
       name: "t", next: "A", manual: false,
       schedule: { function: { ...FN, calculationNodesTags: "" } },
-    })).toContain("schedule-function-incomplete");
+    });
+    const issue = issues.find((i) => i.code === "schedule-function-incomplete");
+    expect(issue?.severity).toBe("error");
+  });
+
+  test("flags a schedule function with both fields omitted, without throwing", () => {
+    // Not reachable through the parse entry points (Zod requires both as
+    // .min(1) strings), but reachable via applyPatch, which takes a
+    // Partial<Transition> and bypasses Zod entirely. validateSemantics must
+    // never throw, even when handed a canonical-shaped-but-Zod-unchecked
+    // schedule.function missing its required string fields.
+    expect(() =>
+      issuesFor({
+        name: "t", next: "A", manual: false,
+        schedule: { function: {} },
+      }),
+    ).not.toThrow();
+    const issues = issuesFor({
+      name: "t", next: "A", manual: false,
+      schedule: { function: {} },
+    });
+    const issue = issues.find((i) => i.code === "schedule-function-incomplete");
+    expect(issue?.severity).toBe("error");
   });
 
   test("warns on a negative timeoutMs without blocking", () => {
@@ -56,5 +94,57 @@ describe("schedule semantic rules (spec §4)", () => {
     const c = codes({ name: "t", next: "A", manual: true });
     expect(c).not.toContain("schedule-mode-required");
     expect(c).not.toContain("schedule-manual-conflict");
+  });
+
+  test("end-to-end: normalization strips a lone delayMs: 0, and the rule then fires as zero-mode", () => {
+    // Proves normalize08 (Task 7) and schedule-mode-required (this task)
+    // compose correctly rather than each being right in isolation. The wire
+    // payload has delayMs: 0 and no function — a shape the server itself
+    // emits (delayMs: 0 beside a function it considers absent) and reads as
+    // "no mode". normalize08 strips the 0 because its presence test is `> 0`,
+    // not "key exists".
+    //
+    // This deliberately calls the dialect's toCanonical() directly rather
+    // than going through parseImportPayload: TransitionScheduleSchema's own
+    // Zod refine (schema/workflow.ts) already rejects a zero-mode schedule
+    // as a schema-level error on the *normalized* input, before
+    // parseImportPayload ever builds a document — so parseImportPayload
+    // never reaches schedule-mode-required for this shape. That refine is
+    // exactly why the semantic rule is redundant on the Zod-checked parse
+    // path and load-bearing on the Zod-free path (`applyPatch`, a
+    // `Partial<Transition>` editor writes into directly). Calling
+    // toCanonical() and feeding its output straight to validateSemantics
+    // reproduces that second path and proves the two stages compose.
+    const raw = {
+      importMode: "MERGE",
+      workflows: [{
+        version: "1.3", name: "w", initialState: "A", active: true,
+        states: {
+          A: {
+            transitions: [{
+              name: "t", next: "A", manual: false, disabled: false,
+              schedule: { delayMs: 0, timeoutMs: 500 },
+            }],
+          },
+        },
+      }],
+    };
+    const { value: canonical } = cyoda08Dialect.toCanonical(raw);
+    const workflows = (canonical as { workflows: unknown[] }).workflows;
+    const normalizedTransition = (
+      (workflows[0] as Record<string, unknown>)["states"] as Record<string, unknown>
+    )["A"] as { transitions: Array<{ schedule?: Record<string, unknown> }> };
+    const s = normalizedTransition.transitions[0]!.schedule;
+    expect(s).not.toHaveProperty("delayMs");
+    expect(s).not.toHaveProperty("function");
+
+    const session = {
+      entity: null,
+      importMode: "MERGE",
+      workflows,
+    } as unknown as WorkflowSession;
+    const issues = validateSemantics(session);
+    const errorCodes = issues.filter((i) => i.severity === "error").map((i) => i.code);
+    expect(errorCodes).toContain("schedule-mode-required");
   });
 });
