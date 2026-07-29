@@ -118,6 +118,6 @@ describe("processor startNewTxOnDispatch field", () => {
     fireEvent.click(cb);
     fireEvent.click(screen.getByTestId("processor-modal-apply"));
 
-    expect(onApply.mock.calls[0]![0].startNewTxOnDispatch).toBe(true);
+    expect(onApply.mock.calls[0]![0].config?.startNewTxOnDispatch).toBe(true);
   });
 });

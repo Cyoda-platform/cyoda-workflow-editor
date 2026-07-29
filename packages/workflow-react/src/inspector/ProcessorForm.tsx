@@ -58,7 +58,7 @@ function toDraft(processor?: Processor): ProcessorDraft {
   return {
     name: externalized?.name ?? "",
     executionMode: externalized?.executionMode ?? "ASYNC_NEW_TX",
-    startNewTxOnDispatch: externalized?.startNewTxOnDispatch ?? false,
+    startNewTxOnDispatch: externalized?.config?.startNewTxOnDispatch ?? false,
     attachEntity: externalized?.config?.attachEntity ?? false,
     calculationNodesTags: externalized?.config?.calculationNodesTags ?? "",
     responseTimeoutMs:
@@ -90,14 +90,15 @@ function toProcessor(draft: ProcessorDraft): Processor {
   if (draft.asyncResult && crossover.value !== undefined) {
     config.crossoverToAsyncMs = crossover.value;
   }
+  // cyoda-go 0.8.3 requires this INSIDE config, not on the processor.
+  if (draft.executionMode === "COMMIT_BEFORE_DISPATCH" && draft.startNewTxOnDispatch) {
+    config.startNewTxOnDispatch = true;
+  }
 
   return {
     type: "externalized",
     name: draft.name.trim(),
     executionMode: draft.executionMode,
-    ...(draft.executionMode === "COMMIT_BEFORE_DISPATCH" && draft.startNewTxOnDispatch
-      ? { startNewTxOnDispatch: true }
-      : {}),
     ...(Object.keys(config).length > 0 ? { config } : {}),
     ...(draft.annotations !== undefined ? { annotations: draft.annotations } : {}),
   };
