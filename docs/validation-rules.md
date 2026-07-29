@@ -61,6 +61,7 @@ code is added or removed without updating this file.
 | `null-criterion-not-last` | transition | yes | An automated no-criterion transition isn't last, so it always fires first; later automated transitions on the state are unreachable (they're named in the message). |
 | `schedule-timeout-negative` | transition | yes | `schedule.timeoutMs` is negative; the server accepts it but treats it like `0`. |
 | `workflow-schema-version-outdated` | workflow | yes | The in-document `version` tag is below the minimum minor the target server accepts; carries a `fix` that rewrites it to the dialect's current tag. |
+| `unguarded-automated-cycle` | workflow | yes | A cycle is reachable purely via unguarded automated transitions (`manual: false`, not `disabled`, no `criterion` — a `schedule` does not exempt an edge). cyoda-go rejects this at import unless `allowCycles` is set. Necessary but not sufficient: detection runs against the merged stored result, so a `MERGE` can still be rejected over a cycle this document doesn't contain — never treated as an error. |
 
 ## Info
 

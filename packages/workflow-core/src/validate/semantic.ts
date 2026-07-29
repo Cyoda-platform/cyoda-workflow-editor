@@ -5,6 +5,7 @@ import {
 } from "../criteria/operators.js";
 import { validateJsonPathSubset } from "../criteria/jsonPathSubset.js";
 import { getDialect, LATEST_CYODA_VERSION } from "../dialect/index.js";
+import { findUnguardedCycles } from "./cycles.js";
 import { idFor as identityIdFor } from "../identity/id-for.js";
 import { NAME_MAX_LENGTH } from "../schema/name.js";
 import type { Criterion } from "../types/criterion.js";
@@ -73,6 +74,23 @@ export function validateSemantics(
 
   for (const wf of session.workflows) {
     issues.push(...validateWorkflow(wf, doc));
+
+    // unguarded-automated-cycle (spec §4): warning, not error — cyoda-go runs
+    // cycle detection against the merged STORED result, not the payload, so a
+    // MERGE can be rejected over a cycle in a workflow this document does not
+    // contain. Necessary but not sufficient; a rule that cannot be complete
+    // must not block a save. No `wf.active` check: the server does not skip
+    // inactive workflows during cycle detection.
+    if (session.allowCycles !== true) {
+      for (const cycle of findUnguardedCycles(wf)) {
+        issues.push({
+          severity: "warning",
+          code: "unguarded-automated-cycle",
+          message: `Workflow "${wf.name}": infinite loop detected: ${cycle.join(" -> ")} via unguarded automated transitions. cyoda-go rejects this import unless allowCycles is set.`,
+          ...idFor(doc, wf.name, "workflow"),
+        });
+      }
+    }
   }
 
   issues.push(...criterionRules(session));
