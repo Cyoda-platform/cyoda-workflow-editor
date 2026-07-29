@@ -51,6 +51,25 @@ describe("load notices banner", () => {
     expect(screen.queryByTestId("load-notices-banner")).toBeNull();
   });
 
+  it("re-rendering with a new array containing the same notices stays dismissed", () => {
+    const { rerender } = render(
+      <WorkflowEditor document={docA} loadNotices={["Notice from document A."]} />,
+    );
+    fireEvent.click(screen.getByTestId("load-notices-banner-dismiss"));
+    expect(screen.queryByTestId("load-notices-banner")).toBeNull();
+
+    // A host that builds the array inline (e.g.
+    // `loadNotices={result.warnings.filter(isLoadNotice)}`) constructs a new
+    // array reference on every render even when nothing changed. Reference
+    // comparison would treat this as a new load and re-arm the banner,
+    // making it un-dismissable. Content comparison must not.
+    rerender(
+      <WorkflowEditor document={docA} loadNotices={["Notice from document A."]} />,
+    );
+
+    expect(screen.queryByTestId("load-notices-banner")).toBeNull();
+  });
+
   it("loading a different document with its own notices shows the banner again after a prior dismissal", () => {
     const { rerender } = render(
       <WorkflowEditor document={docA} loadNotices={["Notice from document A."]} />,

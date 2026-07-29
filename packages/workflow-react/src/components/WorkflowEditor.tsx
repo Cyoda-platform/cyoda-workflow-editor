@@ -129,14 +129,25 @@ export interface WorkflowEditorProps {
    * left in the document by the time that recomputation runs, so they can
    * only be surfaced here, once, at load.
    *
-   * Rendered as a dismissible banner. Pass a **fresh array** each time a
-   * (possibly different) document is loaded — even if the host reloads the
-   * exact same file — so the banner is a new component input. Reusing the
-   * same array reference across renders (e.g. because the host stores it in
-   * state that outlives that particular load) keeps a prior dismissal in
-   * effect; a new reference un-dismisses the banner, which is what makes it
-   * safe to keep the editor instance mounted across the host loading several
-   * documents in a row (see `apps/docs-embed-demo` `LocalFileEditorPage`).
+   * Rendered as a dismissible banner. Dismissal is content-aware, not
+   * reference-aware: a re-render that passes a *different* set of notices
+   * (order-sensitive) re-arms the banner even if it was previously
+   * dismissed; a re-render with the same notices — even in a newly
+   * allocated array, e.g. from an inline `loadNotices={warnings.filter(...)}`
+   * expression — leaves a prior dismissal alone. There is no need to
+   * memoize this array or otherwise manage its identity across renders.
+   *
+   * This is what makes it safe to keep a single `WorkflowEditor` instance
+   * mounted across a host loading several documents in a row (see
+   * `apps/docs-embed-demo` `LocalFileEditorPage`): each load hands the
+   * banner that document's own notices, and dismissing one document's
+   * banner never suppresses the next document's. (`document` itself only
+   * seeds the editor's internal state at mount — a host that wants the
+   * displayed document to change on a later load needs to remount the
+   * editor regardless of this prop, e.g. by keying it on a file/document id;
+   * remounting also resets the dismissal, independently of the check
+   * described above.)
+   *
    * Omit, or pass an empty array, when there is nothing to report.
    */
   loadNotices?: string[];
@@ -158,6 +169,20 @@ type WorkflowEditorActiveSurface = "graph" | "json";
 
 function hasPersistedWorkflowUi(meta: WorkflowUiMeta | undefined): meta is WorkflowUiMeta {
   return !!meta && Object.values(meta).some((value) => value !== undefined);
+}
+
+/**
+ * Order-sensitive content equality for `loadNotices` arrays. Same notices in
+ * a different order is not a case worth distinguishing (a host would have no
+ * reason to reorder them without the underlying notices actually changing),
+ * so this deliberately does not sort before comparing.
+ */
+function sameLoadNotices(a: string[] | undefined, b: string[] | undefined): boolean {
+  if (a === b) return true;
+  const left = a ?? [];
+  const right = b ?? [];
+  if (left.length !== right.length) return false;
+  return left.every((notice, index) => notice === right[index]);
 }
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -253,12 +278,17 @@ export function WorkflowEditor({
   const [jsonStatus, setJsonStatus] = useState<JsonEditStatus>({ status: "idle" });
   const [openIssueSeverity, setOpenIssueSeverity] = useState<IssueSeverity | null>(null);
   const [loadNoticesDismissed, setLoadNoticesDismissed] = useState(false);
-  // Tracks the *array reference* last seen, not its contents — see the
-  // `loadNotices` prop doc. A host that reloads a different document (or
-  // reloads the same file from disk) passes a fresh array each time, which
-  // is exactly the signal that should un-dismiss a previously dismissed
-  // banner; a host that only re-renders without a new load keeps passing the
-  // same reference, which must leave the dismissal alone.
+  // Tracks the notices *content* last seen, not the array reference — see the
+  // `loadNotices` prop doc. Reference identity is unusable here: a host
+  // building the array inline (e.g. `loadNotices={warnings.filter(...)}`)
+  // constructs a new array on every render regardless of whether anything
+  // changed, and reference-tracking would then re-arm the banner on every
+  // render, making it impossible to dismiss. Loading a genuinely different
+  // document is already covered independently of this comparison — the
+  // `document` prop only seeds `useEditorStore` on mount, with no re-sync
+  // effect, so a host switching documents must remount the editor, which
+  // resets `loadNoticesDismissed` for free. This comparison only needs to
+  // catch the same-mount case: re-arm when the notices actually differ.
   const lastLoadNoticesRef = useRef(loadNotices);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [placement, setPlacement] = useState<Placement>(() => {
@@ -302,7 +332,13 @@ export function WorkflowEditor({
   }, [state.document, onChange]);
 
   useEffect(() => {
-    if (lastLoadNoticesRef.current === loadNotices) return;
+    // The effect dependency is the array reference, so this body runs on
+    // every render where the host passes a new array — including a host
+    // that builds it inline and therefore passes a new (but often
+    // content-identical) array on every render. `sameLoadNotices` is what
+    // keeps that from re-arming a dismissed banner: only an actual content
+    // change resets `loadNoticesDismissed`.
+    if (sameLoadNotices(lastLoadNoticesRef.current, loadNotices)) return;
     lastLoadNoticesRef.current = loadNotices;
     setLoadNoticesDismissed(false);
   }, [loadNotices]);
