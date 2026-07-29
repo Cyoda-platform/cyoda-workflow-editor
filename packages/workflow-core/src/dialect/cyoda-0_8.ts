@@ -42,6 +42,8 @@ import type { CyodaDialect, ToCanonicalResult } from "./dialect.js";
  */
 export const cyoda08Dialect: CyodaDialect = {
   version: "0.8",
+  schemaVersionTag: "1.3",
+  acceptedSchemaVersions: [{ major: 1, minMinor: 1, maxMinor: 3 }],
   toCanonical(raw: unknown): ToCanonicalResult {
     const normalized = normalize08(coerceCanonicalDefaults(normalizeOperatorAlias(raw)));
     return { value: normalized.value, warnings: normalized.warnings };

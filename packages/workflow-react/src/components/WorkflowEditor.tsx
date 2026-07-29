@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import type { Connection, Edge } from "reactflow";
 import {
   applyPatch,
+  type CyodaSchemaVersion,
   type DomainPatch,
   type EdgeAnchor,
   type EdgeAnchorPair,
   type EditorViewport,
   type PatchTransaction,
+  getDialect,
   invertPatch,
   LATEST_CYODA_VERSION,
   SUPPORTED_CYODA_VERSIONS,
@@ -147,11 +149,11 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return target.closest('[role="textbox"], .monaco-editor') !== null;
 }
 
-function defaultNewWorkflow(existing: string[]): Workflow {
+function defaultNewWorkflow(existing: string[], cyodaVersion: CyodaSchemaVersion): Workflow {
   let n = existing.length + 1;
   while (existing.includes(`workflow${n}`)) n++;
   return {
-    version: "1.0",
+    version: getDialect(cyodaVersion).schemaVersionTag,
     name: `workflow${n}`,
     initialState: "start",
     active: true,
@@ -1027,7 +1029,10 @@ export function WorkflowEditor({
             readOnly={readOnly}
             onSelect={actions.setActiveWorkflow}
             onAdd={() => {
-              const newWorkflow = defaultNewWorkflow(workflows.map((w) => w.name));
+              const newWorkflow = defaultNewWorkflow(
+                workflows.map((w) => w.name),
+                state.document.meta.cyodaVersion ?? LATEST_CYODA_VERSION,
+              );
               dispatch({ op: "addWorkflow", workflow: newWorkflow });
               actions.setActiveWorkflow(newWorkflow.name);
             }}

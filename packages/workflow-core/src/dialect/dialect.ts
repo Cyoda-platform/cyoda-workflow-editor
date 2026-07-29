@@ -29,7 +29,36 @@ export interface ToCanonicalResult {
  * `transitions[].schedule` and a strict output allowlist.
  */
 export interface CyodaDialect {
+  /**
+   * The cyoda-go dialect key — e.g. `"0.8"`. This is the REGISTRY key.
+   *
+   * NB: do not confuse with `schemaVersionTag` below. `version` identifies the
+   * cyoda-go binary line; `schemaVersionTag` is the value written INSIDE a
+   * workflow document. Both look like MAJOR.MINOR and mean entirely different
+   * things. See `ai/cyoda-schema-versions.md`.
+   */
   readonly version: CyodaSchemaVersion;
+
+  /**
+   * The in-document `version` tag this dialect stamps on NEW workflows — e.g.
+   * `"1.3"` for the 0.8 dialect. Required: a dialect that cannot say which tag
+   * its wire contract uses is under-specified, and any default we invented for
+   * an absent value would be the hardcoded literal this field exists to remove.
+   */
+  readonly schemaVersionTag: string;
+
+  /**
+   * Which in-document tags the target server accepts. Absent means the server
+   * does not validate the tag, so the editor skips the check. An array because
+   * the discovery endpoint returns one — multiple majors may be accepted
+   * concurrently during a deprecation window.
+   */
+  readonly acceptedSchemaVersions?: readonly {
+    major: number;
+    minMinor: number;
+    maxMinor: number;
+  }[];
+
   toCanonical(raw: unknown): ToCanonicalResult;
   workflowsToWire(workflows: Workflow[]): Array<Record<string, unknown>>;
 }

@@ -42,6 +42,12 @@ describe("dialect registry", () => {
     expect(getDialect("0.8").version).toBe("0.8");
   });
 
+  test("the 0.8 dialect declares its schema tag and accepted range", () => {
+    const d = getDialect("0.8");
+    expect(d.schemaVersionTag).toBe("1.3");
+    expect(d.acceptedSchemaVersions).toEqual([{ major: 1, minMinor: 1, maxMinor: 3 }]);
+  });
+
   test("an unknown version throws a clear, actionable error", () => {
     expect(() => getDialect("9.9")).toThrowError(/Unknown cyoda-go schema version "9.9"/);
   });
@@ -86,6 +92,7 @@ describe("pluggability: a host-registered dialect round-trips", () => {
 
   const upperDialect: CyodaDialect = {
     version: "test-upper",
+    schemaVersionTag: base.schemaVersionTag,
     toCanonical(raw) {
       const lowered = JSON.parse(
         JSON.stringify(raw, (k, v) =>
