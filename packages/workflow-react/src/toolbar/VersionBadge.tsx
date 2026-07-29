@@ -47,8 +47,15 @@ export function VersionBadge({
     setOpen((o) => !o);
   };
 
+  // No dialect to switch to — degrade to the plain badge. Distinct from the
+  // readOnly prop (viewer mode): this is driven purely by how many dialects
+  // SUPPORTED_CYODA_VERSIONS currently lists. See WorkflowEditor.tsx for the
+  // matching dormant note on the switch machinery this badge would otherwise
+  // trigger (handleVersionChange / pendingVersionSwitch / VersionSwitchModal).
+  const noSwitchAvailable = supportedVersions.length === 1;
+
   // hooks must precede early return (React rules of hooks)
-  if (readOnly) {
+  if (readOnly || noSwitchAvailable) {
     return (
       <div
         data-testid="version-badge"

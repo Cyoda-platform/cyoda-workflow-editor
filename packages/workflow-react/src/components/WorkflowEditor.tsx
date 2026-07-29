@@ -243,6 +243,8 @@ export function WorkflowEditor({
     document: WorkflowEditorDocument;
     warnings: string[];
   }
+  // Dormant while only one dialect ships (see spec §0). Kept rather than deleted
+  // because a 0.9 dialect will need them; deleting and resurrecting is worse.
   const [pendingVersionSwitch, setPendingVersionSwitch] = useState<PendingVersionSwitch | null>(null);
   const selectionRef = useRef<Selection>(state.selection);
   const documentStateRef = useRef(state.document);
@@ -535,6 +537,25 @@ export function WorkflowEditor({
     [actions],
   );
 
+  // No dedicated DomainPatch op carries session.allowCycles through applyPatch's
+  // "replaceSession" case (it only copies workflows/importMode/entity), so this
+  // writes the document directly via silentReplace — bumping meta.revision by
+  // hand, same as handleAutoLayout below, since applyPatch normally does that.
+  const handleAllowCyclesChange = useCallback(
+    (checked: boolean) => {
+      actions.silentReplace(
+        {
+          session: { ...state.document.session, allowCycles: checked },
+          meta: { ...state.document.meta, revision: state.document.meta.revision + 1 },
+        },
+        { preserveEditorState: true },
+      );
+    },
+    [state.document, actions],
+  );
+
+  // Dormant while only one dialect ships (see spec §0). Kept rather than deleted
+  // because a 0.9 dialect will need them; deleting and resurrecting is worse.
   const handleVersionChange = useCallback(
     (targetVersion: string) => {
       const wireJson = serializeImportPayload(state.document);
@@ -1213,6 +1234,11 @@ export function WorkflowEditor({
           />
         )}
         {helpOpen && <HelpModal onCancel={() => setHelpOpen(false)} />}
+        {/*
+          Dormant while only one dialect ships (see spec §0). Kept rather than
+          deleted because a 0.9 dialect will need them; deleting and
+          resurrecting is worse.
+        */}
         {pendingVersionSwitch && (
           <VersionSwitchModal
             fromVersion={`v${state.document.meta.cyodaVersion ?? LATEST_CYODA_VERSION}`}
@@ -1237,6 +1263,8 @@ export function WorkflowEditor({
               onIssueBadgeClick={(severity) =>
                 setOpenIssueSeverity((prev) => (prev === severity ? null : severity))
               }
+              allowCycles={state.document.session.allowCycles === true}
+              onAllowCyclesChange={handleAllowCyclesChange}
               toolbarStart={toolbarStart}
               toolbarCenter={toolbarCenter}
               toolbarEnd={toolbarEnd}

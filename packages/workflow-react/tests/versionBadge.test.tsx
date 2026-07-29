@@ -52,6 +52,15 @@ describe("VersionBadge", () => {
     fireEvent.click(badge);
     expect(screen.queryByTestId("version-dropdown")).toBeNull();
   });
+
+  it("is read-only when only one dialect ships, even without the readOnly prop", () => {
+    render(<VersionBadge version="v0.8" supportedVersions={["0.8"]} />);
+    expect(screen.queryByRole("button")).toBeNull();
+    const badge = screen.getByTestId("version-badge");
+    expect(badge.tagName).toBe("DIV");
+    fireEvent.click(badge);
+    expect(screen.queryByTestId("version-dropdown")).toBeNull();
+  });
 });
 
 describe("VersionSwitchModal", () => {

@@ -18,6 +18,10 @@ export interface ToolbarProps {
   toolbarStart?: ReactNode;
   toolbarCenter?: ReactNode;
   toolbarEnd?: ReactNode;
+  /** Current value of `doc.session.allowCycles`. */
+  allowCycles?: boolean;
+  /** Bound to `doc.session.allowCycles`; omit to hide the toggle entirely. */
+  onAllowCyclesChange?: (value: boolean) => void;
 }
 
 export function Toolbar({
@@ -31,6 +35,8 @@ export function Toolbar({
   toolbarStart,
   toolbarCenter,
   toolbarEnd,
+  allowCycles = false,
+  onAllowCyclesChange,
 }: ToolbarProps) {
   const messages = useMessages();
   return (
@@ -79,6 +85,29 @@ export function Toolbar({
           testId="toolbar-infos"
         />
       </span>
+      {onAllowCyclesChange && (
+        <label
+          title={messages.toolbar.allowCyclesTitle}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            fontSize: 11,
+            color: "#475569",
+            cursor: readOnly ? "default" : "pointer",
+            userSelect: "none",
+          }}
+        >
+          <input
+            type="checkbox"
+            data-testid="toolbar-allow-cycles"
+            checked={allowCycles}
+            disabled={readOnly}
+            onChange={(e) => onAllowCyclesChange(e.target.checked)}
+          />
+          {messages.toolbar.allowCycles}
+        </label>
+      )}
       {onSave && showSaveButton && (
         <button
           type="button"

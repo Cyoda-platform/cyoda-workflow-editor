@@ -14,6 +14,8 @@ export const defaultMessages = {
     addNote: "+ Note",
     addStateButton: "Add State",
     help: "Help",
+    allowCycles: "Allow cycles",
+    allowCyclesTitle: "Bypass cyoda-go's import-time cycle check. Use for intentional polling workflows.",
   },
   help: {
     title: "Workflow editor guide",
