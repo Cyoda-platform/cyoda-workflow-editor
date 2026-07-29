@@ -173,10 +173,67 @@ describe("TransitionForm schedule editing (task 14)", () => {
     commit("inspector-transition-schedule-timeout", "250");
     fireEvent.click(screen.getByTestId("inspector-transition-schedule-mode-function"));
 
+    const schedule = getSchedule();
     // Falsifiable: if the mode handler didn't carry timeoutMs across (e.g.
     // by always building a bare `{ function: {...} }`), this would be
     // undefined instead of 250.
-    expect(getSchedule()?.timeoutMs).toBe(250);
+    expect(schedule?.timeoutMs).toBe(250);
+    // Falsifiable independent of the above: a naive
+    // `{ ...transition.schedule, function: {...} }` spread would *also*
+    // carry timeoutMs across "for free" while leaving delayMs behind too —
+    // this assertion is what actually discriminates a fresh-object rebuild
+    // from a spread-based one, since the timeoutMs assertion alone passes
+    // under both implementations.
+    expect(schedule).not.toHaveProperty("delayMs");
+  });
+
+  it("re-clicking the already-active static mode button does not reset delayMs/timeoutMs", () => {
+    const { getSchedule } = renderScheduleForm();
+
+    enableSchedule();
+    commit("inspector-transition-schedule-delay", "86400000");
+    commit("inspector-transition-schedule-timeout", "500");
+
+    fireEvent.click(screen.getByTestId("inspector-transition-schedule-mode-static"));
+
+    // Falsifiable: without the no-op guard, re-clicking "Static delay"
+    // rebuilds the schedule from scratch as `{ delayMs: 1 }`, silently
+    // discarding the entered delay and timeout.
+    expect(getSchedule()).toEqual({ delayMs: 86400000, timeoutMs: 500 });
+  });
+
+  it("re-clicking the already-active function mode button does not blank out its fields", () => {
+    const { getSchedule } = renderScheduleForm();
+
+    enableSchedule();
+    fireEvent.click(screen.getByTestId("inspector-transition-schedule-mode-function"));
+
+    fireEvent.change(screen.getByTestId("inspector-transition-schedule-function-name"), {
+      target: { value: "computeFireTime" },
+    });
+    fireEvent.blur(screen.getByTestId("inspector-transition-schedule-function-name"));
+    fireEvent.change(screen.getByTestId("inspector-transition-schedule-function-tags"), {
+      target: { value: "alpha,beta" },
+    });
+    fireEvent.blur(screen.getByTestId("inspector-transition-schedule-function-tags"));
+    fireEvent.change(screen.getByTestId("inspector-transition-schedule-function-attach-entity"), {
+      target: { value: "false" },
+    });
+    commit("inspector-transition-schedule-function-response-timeout", "42");
+
+    fireEvent.click(screen.getByTestId("inspector-transition-schedule-mode-function"));
+
+    // Falsifiable: without the no-op guard, re-clicking "Function" rebuilds
+    // the schedule as a blank
+    // `{ function: { name: "", resultKind: "Schedule", calculationNodesTags: "" } }`,
+    // silently discarding everything entered above.
+    expect(getSchedule()?.function).toEqual({
+      name: "computeFireTime",
+      resultKind: "Schedule",
+      calculationNodesTags: "alpha,beta",
+      attachEntity: false,
+      responseTimeoutMs: 42,
+    });
   });
 
   it("setting timeoutMs while in function mode does not invent a delayMs", () => {
@@ -195,19 +252,27 @@ describe("TransitionForm schedule editing (task 14)", () => {
     expect(schedule).toMatchObject({ timeoutMs: 30 });
   });
 
-  it("mode buttons reflect the current schedule mode via aria-pressed", () => {
+  it("mode buttons use radio semantics (role + aria-checked) consistent with the radiogroup wrapper", () => {
     renderScheduleForm();
     enableSchedule();
 
     const staticBtn = screen.getByTestId("inspector-transition-schedule-mode-static");
     const functionBtn = screen.getByTestId("inspector-transition-schedule-mode-function");
-    expect(staticBtn.getAttribute("aria-pressed")).toBe("true");
-    expect(functionBtn.getAttribute("aria-pressed")).toBe("false");
+
+    // Falsifiable: the wrapper is role="radiogroup" — children advertising
+    // aria-pressed (a toggle-button attribute) instead of role="radio" +
+    // aria-checked would mismatch the container's promised semantics.
+    expect(staticBtn.getAttribute("role")).toBe("radio");
+    expect(functionBtn.getAttribute("role")).toBe("radio");
+    expect(staticBtn.getAttribute("aria-checked")).toBe("true");
+    expect(functionBtn.getAttribute("aria-checked")).toBe("false");
+    expect(staticBtn.hasAttribute("aria-pressed")).toBe(false);
+    expect(functionBtn.hasAttribute("aria-pressed")).toBe(false);
 
     fireEvent.click(functionBtn);
 
-    expect(staticBtn.getAttribute("aria-pressed")).toBe("false");
-    expect(functionBtn.getAttribute("aria-pressed")).toBe("true");
+    expect(staticBtn.getAttribute("aria-checked")).toBe("false");
+    expect(functionBtn.getAttribute("aria-checked")).toBe("true");
   });
 
   it("edits function name, tags, context, and responseTimeoutMs", () => {
@@ -240,6 +305,23 @@ describe("TransitionForm schedule editing (task 14)", () => {
       context: "ctx-payload",
       responseTimeoutMs: -1,
     });
+  });
+
+  it("calculationNodesTags is normalized the same way ProcessorForm normalizes tags", () => {
+    const { getSchedule } = renderScheduleForm();
+
+    enableSchedule();
+    fireEvent.click(screen.getByTestId("inspector-transition-schedule-mode-function"));
+
+    fireEvent.change(screen.getByTestId("inspector-transition-schedule-function-tags"), {
+      target: { value: "  a , b ,, " },
+    });
+    fireEvent.blur(screen.getByTestId("inspector-transition-schedule-function-tags"));
+
+    // Falsifiable: writing the raw string verbatim (the pre-fix behaviour)
+    // would store "  a , b ,, " rather than the trimmed/deduped "a,b" that
+    // ProcessorForm's normalizeTags produces for the same input.
+    expect(getSchedule()?.function?.calculationNodesTags).toBe("a,b");
   });
 
   it("attachEntity round-trips an explicit false, distinct from the default", () => {

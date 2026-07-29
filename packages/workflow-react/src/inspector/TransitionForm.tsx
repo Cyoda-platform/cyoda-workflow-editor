@@ -21,6 +21,7 @@ import {
   summarizeProcessor,
 } from "./ProcessorForm.js";
 import { AnnotationsField } from "./AnnotationsField.js";
+import { normalizeTags } from "./tags.js";
 import type { Selection } from "../state/types.js";
 
 // `ScheduleFunction` itself isn't re-exported from @cyoda/workflow-core's
@@ -181,7 +182,10 @@ export function TransitionForm({
   const commitScheduleFunctionTags = (raw: string) => {
     const currentFn = transition.schedule?.function;
     if (!currentFn) return;
-    writeScheduleFunction({ ...currentFn, calculationNodesTags: raw });
+    // calculationNodesTags is a required string (not optional) on
+    // ScheduleFunction, unlike ProcessorForm's optional config field, so an
+    // empty/blank result normalizes to "" rather than being omitted.
+    writeScheduleFunction({ ...currentFn, calculationNodesTags: normalizeTags(raw) ?? "" });
   };
 
   // Tri-state: "" clears attachEntity entirely (server default: true),
@@ -464,8 +468,9 @@ export function TransitionForm({
             <div role="radiogroup" aria-label="Schedule mode" style={{ display: "flex", gap: 8 }}>
               <button
                 type="button"
+                role="radio"
                 data-testid="inspector-transition-schedule-mode-static"
-                aria-pressed={transition.schedule.function === undefined}
+                aria-checked={transition.schedule.function === undefined}
                 disabled={disabled}
                 style={
                   transition.schedule.function === undefined
@@ -473,6 +478,9 @@ export function TransitionForm({
                     : ghostBtn
                 }
                 onClick={() => {
+                  // No-op if already static: a re-click must not silently
+                  // reset an entered delayMs/timeoutMs back to defaults.
+                  if (transition.schedule?.function === undefined) return;
                   // Fresh schedule object: never spreads the previous
                   // (function-mode) schedule, so `function` cannot survive
                   // the switch — the server rejects both fields present.
@@ -492,8 +500,9 @@ export function TransitionForm({
               </button>
               <button
                 type="button"
+                role="radio"
                 data-testid="inspector-transition-schedule-mode-function"
-                aria-pressed={transition.schedule.function !== undefined}
+                aria-checked={transition.schedule.function !== undefined}
                 disabled={disabled}
                 style={
                   transition.schedule.function !== undefined
@@ -501,6 +510,9 @@ export function TransitionForm({
                     : ghostBtn
                 }
                 onClick={() => {
+                  // No-op if already function mode: a re-click must not
+                  // silently wipe name/tags/context/attachEntity/responseTimeoutMs.
+                  if (transition.schedule?.function !== undefined) return;
                   // Fresh schedule object: never spreads the previous
                   // (static-mode) schedule, so `delayMs` cannot survive the
                   // switch — the server rejects both fields present.

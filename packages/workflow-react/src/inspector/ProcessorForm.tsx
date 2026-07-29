@@ -9,6 +9,7 @@ import {
   type Transition,
 } from "@cyoda/workflow-core";
 import { useMessages } from "../i18n/context.js";
+import { normalizeTags } from "./tags.js";
 import { colors, radii } from "../style/tokens.js";
 import { CustomSelectInput } from "./fields.js";
 import { ModalFrame } from "../modals/DeleteStateModal.js";
@@ -29,14 +30,6 @@ function parseOptionalInteger(value: string, label: string): { value?: number; e
     return { error: `${label} must be an integer greater than or equal to 0.` };
   }
   return { value: parsed };
-}
-
-function normalizeTags(value: string): string | undefined {
-  const parts = value
-    .split(",")
-    .map((part) => part.trim())
-    .filter(Boolean);
-  return parts.length > 0 ? parts.join(",") : undefined;
 }
 
 type ProcessorDraft = {
