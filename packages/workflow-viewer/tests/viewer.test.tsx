@@ -288,6 +288,82 @@ describe("WorkflowViewer", () => {
     expect(container.textContent).toContain("enrich");
   });
 
+  test("renders a COMMIT BEFORE DISPATCH badge only for that execution mode", () => {
+    function graphWith(executionMode: string | undefined) {
+      return projectFixture({
+        importMode: "MERGE",
+        workflows: [
+          {
+            version: "1.3",
+            name: "wf",
+            initialState: "a",
+            active: true,
+            states: {
+              a: {
+                transitions: [
+                  {
+                    name: "process",
+                    next: "b",
+                    manual: false,
+                    disabled: false,
+                    processors: executionMode
+                      ? [{ type: "externalized", name: "enrich", executionMode }]
+                      : [{ type: "externalized", name: "enrich" }],
+                  },
+                ],
+              },
+              b: { transitions: [] },
+            },
+          },
+        ],
+      });
+    }
+
+    const withCommit = render(<WorkflowViewer graph={graphWith("COMMIT_BEFORE_DISPATCH")} />);
+    expect(withCommit.container.textContent).toContain("COMMIT BEFORE DISPATCH");
+    withCommit.unmount();
+
+    for (const mode of ["SYNC", "ASYNC_SAME_TX", "ASYNC_NEW_TX", undefined]) {
+      const { container, unmount } = render(<WorkflowViewer graph={graphWith(mode)} />);
+      expect(container.textContent).not.toContain("COMMIT BEFORE DISPATCH");
+      unmount();
+    }
+  });
+
+  test("renders the COMMIT BEFORE DISPATCH badge when a later processor (not the first) has that mode", () => {
+    const graph = projectFixture({
+      importMode: "MERGE",
+      workflows: [
+        {
+          version: "1.3",
+          name: "wf",
+          initialState: "a",
+          active: true,
+          states: {
+            a: {
+              transitions: [
+                {
+                  name: "process",
+                  next: "b",
+                  manual: false,
+                  disabled: false,
+                  processors: [
+                    { type: "externalized", name: "first", executionMode: "SYNC" },
+                    { type: "externalized", name: "second", executionMode: "COMMIT_BEFORE_DISPATCH" },
+                  ],
+                },
+              ],
+            },
+            b: { transitions: [] },
+          },
+        },
+      ],
+    });
+
+    const { container } = render(<WorkflowViewer graph={graph} />);
+    expect(container.textContent).toContain("COMMIT BEFORE DISPATCH");
+  });
+
   test("accepts an external selection and surfaces changes", () => {
     const graph = projectFixture({
       importMode: "MERGE",

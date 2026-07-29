@@ -1,10 +1,5 @@
 import type { Criterion, Processor, Transition } from "@cyoda/workflow-core";
-import type {
-  CriterionSummary,
-  ExecutionSummary,
-  ProcessorSummary,
-  TransitionSummary,
-} from "../types.js";
+import type { CriterionSummary, ProcessorSummary, TransitionSummary } from "../types.js";
 import { opShort, truncate } from "./op-short.js";
 
 export function summarizeTransition(t: Transition): TransitionSummary {
@@ -15,8 +10,7 @@ export function summarizeTransition(t: Transition): TransitionSummary {
   if (t.criterion) summary.criterion = summarizeCriterion(t.criterion);
   const proc = summarizeProcessors(t.processors);
   if (proc) summary.processor = proc;
-  const exec = summarizeExecution(t.processors);
-  if (exec) summary.execution = exec;
+  if (hasCommitBeforeDispatch(t.processors)) summary.commitBeforeDispatch = true;
   return summary;
 }
 
@@ -47,31 +41,16 @@ export function summarizeProcessors(
 }
 
 /**
- * Execution-mode summary (spec §10.4). Only returned when the "dominant"
- * mode is non-default (explicit ASYNC_NEW_TX is the default and omitted).
- * Dominant = mode of the first processor; if none, returns undefined.
- * `executionMode` is meaningful regardless of `type` — cyoda-go preserves
- * `type` verbatim, and skipping non-"externalized" processors here would
- * silently drop them from the summary.
- *
- * An ABSENT `executionMode` reads as `SYNC`, not `ASYNC_NEW_TX`: SYNC is the
- * documented default at fire (spec §4a), and the serializer now preserves an
- * absent mode rather than fabricating one, so this shape reaches the graph.
- * Only an *explicit* `ASYNC_NEW_TX` counts as the default to be omitted.
+ * True when any processor on the transition runs in COMMIT_BEFORE_DISPATCH
+ * mode — the operationally significant mode where Cyoda commits the entity
+ * before calling the processor (the intermediate state becomes publicly
+ * observable, and the processor must be idempotent since it can be
+ * replayed). Checks every processor, not just the first: a transition with
+ * a commit-before-dispatch step anywhere has that property. `executionMode`
+ * is meaningful regardless of `type` — cyoda-go preserves `type` verbatim,
+ * and skipping non-"externalized" processors here would silently drop them.
  */
-export function summarizeExecution(
-  processors: Processor[] | undefined,
-): ExecutionSummary | undefined {
-  if (!processors) return undefined;
-  for (const p of processors) {
-    const mode = p.executionMode ?? "SYNC";
-    if (mode === "SYNC") return { kind: "sync" };
-    if (mode === "ASYNC_SAME_TX") return { kind: "asyncSameTx" };
-    // Reached by ASYNC_NEW_TX (correctly the default, omitted) but also by
-    // COMMIT_BEFORE_DISPATCH (pre-existing oddity: it falls through here too
-    // and is silently omitted as if it were the default, which it is not —
-    // left as-is, not in scope for this fix).
-    return undefined;
-  }
-  return undefined;
+function hasCommitBeforeDispatch(processors: Processor[] | undefined): boolean {
+  if (!processors) return false;
+  return processors.some((p) => p.executionMode === "COMMIT_BEFORE_DISPATCH");
 }

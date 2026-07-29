@@ -35,7 +35,14 @@ export function badgesFor(
     }
   }
 
-  // Execution badges (SYNC, ASYNC_SAME_TX) removed – hidden from display
+  // Only COMMIT_BEFORE_DISPATCH is surfaced here: it's the operationally
+  // significant mode (Cyoda commits the entity before calling the
+  // processor, so the intermediate state is publicly observable and the
+  // processor must be idempotent). SYNC/ASYNC_SAME_TX/ASYNC_NEW_TX stay
+  // hidden to keep arrow labels uncluttered.
+  if (summary.commitBeforeDispatch) {
+    out.push({ key: "execution", label: "COMMIT BEFORE DISPATCH" });
+  }
 
   if (flags.disabled) out.push({ key: "disabled", label: "Disabled" });
 

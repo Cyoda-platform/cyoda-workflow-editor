@@ -6,7 +6,6 @@ export {
   summarizeTransition,
   summarizeCriterion,
   summarizeProcessors,
-  summarizeExecution,
 } from "./project/summary.js";
 export { opShort, truncate } from "./project/op-short.js";
 export { applyGraphEdit } from "./edit/apply-edit.js";
@@ -20,7 +19,6 @@ export type {
 } from "./inspect.js";
 export type {
   CriterionSummary,
-  ExecutionSummary,
   GraphAnnotation,
   GraphDocument,
   GraphEdge,
