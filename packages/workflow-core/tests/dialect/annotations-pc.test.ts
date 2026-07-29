@@ -30,13 +30,6 @@ describe("0.8 dialect emits processor & criterion annotations", () => {
     expect(t.processors[0].annotations).toEqual({ displayName: "Proc One" });
   });
 
-  test("0.7 wire omits all annotation fields", () => {
-    const wf = wire(PAYLOAD, "0.7");
-    expect(wf.criterionAnnotations).toBeUndefined();
-    expect(wf.states.S.transitions[0].criterionAnnotations).toBeUndefined();
-    expect(wf.states.S.transitions[0].processors?.[0]?.annotations).toBeUndefined();
-  });
-
   test("a workflow without the new fields is byte-identical to before", () => {
     const plain = JSON.stringify({ importMode: "REPLACE", workflows: [{
       version: "1.2", name: "wf", initialState: "S", active: true,

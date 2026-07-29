@@ -14,7 +14,7 @@ describe("projectToGraph", () => {
       importMode: "MERGE",
       workflows: [
         {
-          version: "1.0",
+          version: "1.3",
           name: "wf",
           initialState: "a",
           active: true,
@@ -42,7 +42,7 @@ describe("projectToGraph", () => {
       importMode: "MERGE",
       workflows: [
         {
-          version: "1.0",
+          version: "1.3",
           name: "wf",
           initialState: "only",
           active: true,
@@ -59,7 +59,7 @@ describe("projectToGraph", () => {
       importMode: "MERGE",
       workflows: [
         {
-          version: "1.0",
+          version: "1.3",
           name: "wf",
           initialState: "s",
           active: true,
@@ -82,7 +82,7 @@ describe("projectToGraph", () => {
       importMode: "MERGE",
       workflows: [
         {
-          version: "1.0",
+          version: "1.3",
           name: "wf",
           initialState: "a",
           active: true,
@@ -105,7 +105,7 @@ describe("projectToGraph", () => {
       importMode: "MERGE",
       workflows: [
         {
-          version: "1.0",
+          version: "1.3",
           name: "wf",
           initialState: "a",
           active: true,
@@ -138,7 +138,7 @@ describe("projectToGraph", () => {
       importMode: "MERGE",
       workflows: [
         {
-          version: "1.0",
+          version: "1.3",
           name: "wf",
           initialState: "a",
           active: true,
@@ -159,12 +159,12 @@ describe("projectToGraph", () => {
     }
   });
 
-  test("summary carries criterion/processor/execution badges", () => {
+  test("summary carries criterion/processor badges", () => {
     const graph = project({
       importMode: "MERGE",
       workflows: [
         {
-          version: "1.0",
+          version: "1.3",
           name: "wf",
           initialState: "a",
           active: true,
@@ -200,6 +200,150 @@ describe("projectToGraph", () => {
     const edge = graph.edges.find((e) => e.kind === "transition");
     expect(edge && edge.kind === "transition" && edge.summary.criterion?.kind).toBe("simple");
     expect(edge && edge.kind === "transition" && edge.summary.processor?.kind).toBe("single");
-    expect(edge && edge.kind === "transition" && edge.summary.execution?.kind).toBe("sync");
+    // SYNC is not COMMIT_BEFORE_DISPATCH — the flag must not be set.
+    expect(edge && edge.kind === "transition" && edge.summary.commitBeforeDispatch).toBeUndefined();
   });
+
+  // cyoda-go 0.8.3 round-trips processor `type` verbatim (task-4-brief.md
+  // §5c). A preserved non-canonical type must still surface the
+  // commitBeforeDispatch flag — a stale `type !== "externalized"` gate
+  // would silently drop it.
+  test("commitBeforeDispatch flag is not dropped for a preserved non-canonical processor type", () => {
+    const graph = project({
+      importMode: "MERGE",
+      workflows: [
+        {
+          version: "1.3",
+          name: "wf",
+          initialState: "a",
+          active: true,
+          states: {
+            a: {
+              transitions: [
+                {
+                  name: "process",
+                  next: "b",
+                  manual: false,
+                  disabled: false,
+                  processors: [
+                    {
+                      type: "SCHEDULED",
+                      name: "legacy",
+                      executionMode: "COMMIT_BEFORE_DISPATCH",
+                    },
+                  ],
+                },
+              ],
+            },
+            b: { transitions: [] },
+          },
+        },
+      ],
+    });
+    const edge = graph.edges.find((e) => e.kind === "transition");
+    expect(edge && edge.kind === "transition" && edge.summary.commitBeforeDispatch).toBe(true);
+  });
+
+  // Spec §4a: the documented default at fire is SYNC, not ASYNC_NEW_TX, and the
+  // serializer now preserves an absent executionMode instead of fabricating
+  // one. An absent mode reads as SYNC, which is not COMMIT_BEFORE_DISPATCH.
+  test("a processor with no executionMode does not set commitBeforeDispatch", () => {
+    const graph = project({
+      importMode: "MERGE",
+      workflows: [
+        {
+          version: "1.3",
+          name: "wf",
+          initialState: "a",
+          active: true,
+          states: {
+            a: {
+              transitions: [
+                {
+                  name: "process",
+                  next: "b",
+                  manual: false,
+                  disabled: false,
+                  processors: [{ type: "externalized", name: "p" }],
+                },
+              ],
+            },
+            b: { transitions: [] },
+          },
+        },
+      ],
+    });
+    const edge = graph.edges.find((e) => e.kind === "transition");
+    expect(edge && edge.kind === "transition" && edge.summary.commitBeforeDispatch).toBeUndefined();
+  });
+
+  // Multiple processors: the old code looked only at the first processor,
+  // which would miss a commit-before-dispatch step later in the list. A
+  // transition with that step anywhere must carry the flag.
+  test("commitBeforeDispatch is set when a later (non-first) processor is COMMIT_BEFORE_DISPATCH", () => {
+    const graph = project({
+      importMode: "MERGE",
+      workflows: [
+        {
+          version: "1.3",
+          name: "wf",
+          initialState: "a",
+          active: true,
+          states: {
+            a: {
+              transitions: [
+                {
+                  name: "process",
+                  next: "b",
+                  manual: false,
+                  disabled: false,
+                  processors: [
+                    { type: "externalized", name: "first", executionMode: "SYNC" },
+                    { type: "externalized", name: "second", executionMode: "ASYNC_SAME_TX" },
+                    { type: "externalized", name: "third", executionMode: "COMMIT_BEFORE_DISPATCH" },
+                  ],
+                },
+              ],
+            },
+            b: { transitions: [] },
+          },
+        },
+      ],
+    });
+    const edge = graph.edges.find((e) => e.kind === "transition");
+    expect(edge && edge.kind === "transition" && edge.summary.commitBeforeDispatch).toBe(true);
+  });
+
+  test.each(["SYNC", "ASYNC_SAME_TX", "ASYNC_NEW_TX"] as const)(
+    "commitBeforeDispatch is not set for %s",
+    (mode) => {
+      const graph = project({
+        importMode: "MERGE",
+        workflows: [
+          {
+            version: "1.3",
+            name: "wf",
+            initialState: "a",
+            active: true,
+            states: {
+              a: {
+                transitions: [
+                  {
+                    name: "process",
+                    next: "b",
+                    manual: false,
+                    disabled: false,
+                    processors: [{ type: "externalized", name: "p", executionMode: mode }],
+                  },
+                ],
+              },
+              b: { transitions: [] },
+            },
+          },
+        ],
+      });
+      const edge = graph.edges.find((e) => e.kind === "transition");
+      expect(edge && edge.kind === "transition" && edge.summary.commitBeforeDispatch).toBeUndefined();
+    },
+  );
 });

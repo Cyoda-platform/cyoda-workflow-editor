@@ -1,7 +1,7 @@
 import { outputWorkflow } from "../normalize/output.js";
 import { normalizeOperatorAlias } from "../parse/operator-alias.js";
 import type { Workflow } from "../types/workflow.js";
-import { coerceCanonicalDefaults, isObj } from "./cyoda-0_7.js";
+import { coerceCanonicalDefaults, isObj } from "./canonical-defaults.js";
 import type { CyodaDialect, ToCanonicalResult } from "./dialect.js";
 
 /**
@@ -12,9 +12,15 @@ import type { CyodaDialect, ToCanonicalResult } from "./dialect.js";
  * note in `ai/cyoda-schema-versions.md`).
  *
  * Deltas from the 0.7 dialect:
- * - **`scheduled` processor removed.** The type no longer exists in the wire
- *   format or the canonical model, so — unlike 0.7 — there is nothing to drop in
- *   `toCanonical` and no warning is ever produced.
+ * - **`scheduled` processor no longer specially handled.** The dedicated
+ *   `ScheduledProcessorSchema` type is gone, but `Processor.type` is an open
+ *   string (cyoda-go 0.8.3 round-trips whatever value it was given), so
+ *   `{type:"scheduled"}` still parses and survives into the canonical model —
+ *   unlike 0.7, `toCanonical` has nothing to drop and produces no
+ *   `dropped-scheduled-processor` warning. It instead surfaces as a
+ *   `processor-type-non-canonical` semantic-validation warning (the server
+ *   accepts it and treats it as `externalized` today, per that warning's own
+ *   message).
  * - **`transitions[].schedule` passed through and emitted.** `toCanonical` lets
  *   it flow straight to the canonical model (already the right shape);
  *   `workflowsToWire` emits it when present. 0.7 omitted it entirely.
@@ -33,17 +39,21 @@ import type { CyodaDialect, ToCanonicalResult } from "./dialect.js";
  * REPLACE/ACTIVATE. See `src/schema/name.ts` and `src/validate/semantic.ts`.
  *
  * Known limitations / deferred:
- * - `transitions[].schedule` is a **schema/SPI placeholder** — configurable and
- *   importable, but the cyoda-go runtime does not yet execute scheduled
- *   transitions (firing one returns 400).
+ * - `transitions[].schedule` — cyoda-go **executes** scheduled transitions on
+ *   their own (as of 0.8.3); only firing one *manually by name* is rejected,
+ *   with a 400 `TRANSITION_NOT_FOUND` ("is scheduled and fires automatically;
+ *   it is not manually fireable").
  * - The `internalized` processor type is **reserved** by v0.8.0 but rejected at
  *   dispatch today; it is deliberately **not** modelled here. A future dialect
  *   author must not repurpose the literal.
  */
 export const cyoda08Dialect: CyodaDialect = {
   version: "0.8",
+  schemaVersionTag: "1.3",
+  acceptedSchemaVersions: [{ major: 1, minMinor: 1, maxMinor: 3 }],
   toCanonical(raw: unknown): ToCanonicalResult {
-    return { value: coerceCanonicalDefaults(normalizeOperatorAlias(raw)), warnings: [] };
+    const normalized = normalize08(coerceCanonicalDefaults(normalizeOperatorAlias(raw)));
+    return { value: normalized.value, warnings: normalized.warnings };
   },
   workflowsToWire(workflows: Workflow[]): Array<Record<string, unknown>> {
     return workflows.map((wf) =>
@@ -77,24 +87,26 @@ const TRANSITION_FIELDS = [
   "processors",
   "schedule",
 ] as const;
-const PROCESSOR_FIELDS = [
-  "type",
-  "name",
-  "executionMode",
-  "startNewTxOnDispatch",
-  "annotations",
-  "config",
-] as const;
+const PROCESSOR_FIELDS = ["type", "name", "executionMode", "annotations", "config"] as const;
 const PROCESSOR_CONFIG_FIELDS = [
   "attachEntity",
   "calculationNodesTags",
   "responseTimeoutMs",
   "retryPolicy",
   "context",
+  "startNewTxOnDispatch",
   "asyncResult",
   "crossoverToAsyncMs",
 ] as const;
-const SCHEDULE_FIELDS = ["delayMs", "timeoutMs"] as const;
+const SCHEDULE_FIELDS = ["delayMs", "timeoutMs", "function"] as const;
+const SCHEDULE_FUNCTION_FIELDS = [
+  "name",
+  "resultKind",
+  "calculationNodesTags",
+  "attachEntity",
+  "context",
+  "responseTimeoutMs",
+] as const;
 
 /**
  * The allowlisted field sets, exported so tests can assert the v0.8 wire output
@@ -108,7 +120,148 @@ export const V0_8_WIRE_FIELDS = {
   processor: PROCESSOR_FIELDS,
   processorConfig: PROCESSOR_CONFIG_FIELDS,
   schedule: SCHEDULE_FIELDS,
+  scheduleFunction: SCHEDULE_FUNCTION_FIELDS,
 } as const;
+
+const CONFIG_KEYS = new Set(PROCESSOR_CONFIG_FIELDS as readonly string[]);
+const PROCESSOR_KEYS = new Set(PROCESSOR_FIELDS as readonly string[]);
+
+/**
+ * Reshape a raw 0.8.3 tree into what the canonical schema accepts:
+ *
+ * - Drop `delayMs` when `<= 0`. cyoda-go's presence test is `> 0`, not "key
+ *   exists" — and its own export emits `delayMs: 0` beside `function`.
+ * - Strip `null`-valued optional keys. The server accepts `null` for nearly
+ *   every optional field; Zod's `.optional()` rejects it. This is done
+ *   shallowly, at each known level (workflow/state/transition/schedule/
+ *   schedule.function/processor/processor config), never recursively —
+ *   criterion trees (`value: null` for IS_NULL/NOT_NULL) and `annotations`/
+ *   `criterionAnnotations` (opaque client data) must never be touched.
+ *   Verified against 0.8.3: `type: null`, `executionMode: null` and
+ *   `annotations: null` on a processor are all accepted with a 200.
+ * - Collapse a `null` state, or a `null`/absent `transitions` on a state, to
+ *   the same default a transition-less state already gets (`StateSchema`
+ *   defaults `transitions` to `[]`).
+ * - Treat a `null` processor `config` as absent.
+ * - Relocate a legacy processor-level `startNewTxOnDispatch` into `config`,
+ *   where cyoda-go 0.8.3 requires it.
+ * - Report discarded processor and processor-config keys. Zod strips unknown
+ *   keys silently, which would turn an invalid processor into a quietly-emptied
+ *   one.
+ */
+function normalize08(value: unknown): { value: unknown; warnings: string[] } {
+  const warnings: string[] = [];
+  if (!isObj(value) || !Array.isArray(value["workflows"])) return { value, warnings };
+
+  const stripNulls = (o: Record<string, unknown>): Record<string, unknown> => {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(o)) if (v !== null) out[k] = v;
+    return out;
+  };
+
+  const workflows = (value["workflows"] as unknown[]).map((wf) => {
+    if (!isObj(wf) || !isObj(wf["states"])) return wf;
+    const w = stripNulls(wf);
+    const states = w["states"] as Record<string, unknown>;
+    const nextStates: Record<string, unknown> = {};
+
+    for (const [code, state] of Object.entries(states)) {
+      // A `null` state (the whole entry) and a `null`/absent `transitions`
+      // both collapse to the same default a transition-less state already
+      // gets: `StateSchema.transitions` defaults missing input to `[]`.
+      if (state === null) {
+        nextStates[code] = {};
+        continue;
+      }
+      if (!isObj(state)) {
+        nextStates[code] = state;
+        continue;
+      }
+      const s = stripNulls(state);
+      if (!Array.isArray(s["transitions"])) {
+        nextStates[code] = s;
+        continue;
+      }
+      s["transitions"] = (s["transitions"] as unknown[]).map((t) => {
+        if (!isObj(t)) return t;
+        const tx = stripNulls(t);
+
+        if (isObj(tx["schedule"])) {
+          const sched = stripNulls(tx["schedule"] as Record<string, unknown>);
+          if (typeof sched["delayMs"] === "number" && sched["delayMs"] <= 0) {
+            delete sched["delayMs"];
+          }
+          if (isObj(sched["function"])) {
+            sched["function"] = stripNulls(sched["function"] as Record<string, unknown>);
+          }
+          tx["schedule"] = sched;
+        }
+
+        if (Array.isArray(tx["processors"])) {
+          tx["processors"] = (tx["processors"] as unknown[]).map((p) => {
+            if (!isObj(p)) return p;
+            const rawConfig = p["config"];
+            // A `config` that is present but neither an object nor `null` is
+            // left untouched for Zod to reject.
+            if (rawConfig !== undefined && rawConfig !== null && !isObj(rawConfig)) return p;
+
+            const proc: Record<string, unknown> = { ...p };
+            // `config: null` (the whole block) is treated as absent, same as
+            // every other optional key — `stripNulls` below removes the key.
+            let cfg: Record<string, unknown> | undefined = isObj(rawConfig)
+              ? { ...rawConfig }
+              : undefined;
+
+            // Legacy-position migration. This library emitted
+            // `startNewTxOnDispatch` on the *processor object* for its entire
+            // history before 0.8.3, which requires it inside `config` and
+            // hard-400s the processor-level key ("unknown field"). Without
+            // this, every previously-saved COMMIT_BEFORE_DISPATCH processor
+            // would silently lose its transactional semantics on first open.
+            // Relocation is lossless: there is exactly one correct
+            // destination. A value already in `config` wins — the
+            // processor-level one is the legacy position.
+            if ("startNewTxOnDispatch" in proc) {
+              const legacy = proc["startNewTxOnDispatch"];
+              delete proc["startNewTxOnDispatch"];
+              if (legacy !== null && !(cfg !== undefined && "startNewTxOnDispatch" in cfg)) {
+                cfg = { ...(cfg ?? {}), startNewTxOnDispatch: legacy };
+              }
+            }
+
+            // Dropped-key warnings are computed on the *original* keys, before
+            // null-stripping (an unknown key is unknown, and will be silently
+            // dropped by Zod, whether its value is null or not; a null value on
+            // a *known* key such as `context: null` is not a dropped key) but
+            // *after* the migration above, so the relocated field is not
+            // reported as dropped.
+            const name = String(proc["name"]);
+            const droppedProc = Object.keys(proc).filter((k) => !PROCESSOR_KEYS.has(k));
+            if (droppedProc.length > 0) {
+              warnings.push(`processor-keys-dropped:${name}:${droppedProc.join(",")}`);
+            }
+            if (cfg !== undefined) {
+              const dropped = Object.keys(cfg).filter((k) => !CONFIG_KEYS.has(k));
+              if (dropped.length > 0) {
+                warnings.push(`processor-config-keys-dropped:${name}:${dropped.join(",")}`);
+              }
+            }
+
+            const out = stripNulls(proc);
+            if (cfg !== undefined) out["config"] = stripNulls(cfg);
+            return out;
+          });
+        }
+        return tx;
+      });
+      nextStates[code] = s;
+    }
+    w["states"] = nextStates;
+    return w;
+  });
+
+  return { value: { ...value, workflows }, warnings };
+}
 
 /** Copy only `allowed` keys from `obj`, preserving allowlist order. */
 function pick(obj: Record<string, unknown>, allowed: readonly string[]): Record<string, unknown> {
@@ -150,7 +303,14 @@ function allowlistTransition(t: Record<string, unknown>): Record<string, unknown
     );
   }
   if (isObj(out["schedule"])) {
-    out["schedule"] = pick(out["schedule"] as Record<string, unknown>, SCHEDULE_FIELDS);
+    const sched = pick(out["schedule"] as Record<string, unknown>, SCHEDULE_FIELDS);
+    if (isObj(sched["function"])) {
+      sched["function"] = pick(
+        sched["function"] as Record<string, unknown>,
+        SCHEDULE_FUNCTION_FIELDS,
+      );
+    }
+    out["schedule"] = sched;
   }
   return out;
 }

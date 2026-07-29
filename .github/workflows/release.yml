@@ -53,8 +53,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Build must precede Typecheck: `pnpm typecheck` now covers apps/ as
+      # well as packages/, and apps/docs-embed-demo resolves @cyoda/workflow-*
+      # through each package's built dist/*.d.ts. On a clean checkout those do
+      # not exist yet, so typechecking first fails with TS2307.
       - name: Validate workspace
-        run: pnpm typecheck && pnpm build && pnpm test
+        run: pnpm build && pnpm typecheck && pnpm test
 
       - name: Run release preflight
         run: pnpm release:preflight

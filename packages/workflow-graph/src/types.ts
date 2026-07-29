@@ -75,7 +75,15 @@ export interface TransitionSummary {
   full: string;
   criterion?: CriterionSummary;
   processor?: ProcessorSummary;
-  execution?: ExecutionSummary;
+  /**
+   * True when any processor on this transition runs in
+   * COMMIT_BEFORE_DISPATCH mode — the mode where Cyoda commits the entity
+   * before calling the processor, making the intermediate state publicly
+   * observable and requiring the processor to be idempotent. The other three
+   * execution modes are not operationally significant enough to surface here
+   * and are intentionally omitted (see badgesFor).
+   */
+  commitBeforeDispatch?: boolean;
 }
 
 export type CriterionSummary =
@@ -89,12 +97,6 @@ export type ProcessorSummary =
   | { kind: "none" }
   | { kind: "single"; name: string }
   | { kind: "multiple"; count: number };
-
-/** Execution-mode badge hint. Only non-default modes are surfaced. */
-export type ExecutionSummary =
-  | { kind: "sync" }
-  | { kind: "asyncSameTx" }
-  | { kind: "asyncNewTx" };
 
 export interface GraphAnnotation {
   targetId: string;

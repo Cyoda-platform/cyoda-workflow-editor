@@ -14,6 +14,8 @@ export const defaultMessages = {
     addNote: "+ Note",
     addStateButton: "Add State",
     help: "Help",
+    allowCycles: "Allow cycles",
+    allowCyclesTitle: "Bypass cyoda-go's import-time cycle check. Use for intentional polling workflows.",
   },
   help: {
     title: "Workflow editor guide",
@@ -45,6 +47,10 @@ export const defaultMessages = {
     tipSelect: "Click a state or transition to edit its details in the inspector on the right.",
     tipMove: "Drag a state to reposition it, or use Auto-arrange to lay out the graph automatically.",
     close: "Close",
+  },
+  loadNotices: {
+    heading: "Some content was adjusted while loading this file",
+    dismiss: "Dismiss",
   },
   issues: {
     title: "Issues",

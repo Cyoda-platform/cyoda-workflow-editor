@@ -2,17 +2,20 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import type { Connection, Edge } from "reactflow";
 import {
   applyPatch,
+  type CyodaSchemaVersion,
   type DomainPatch,
   type EdgeAnchor,
   type EdgeAnchorPair,
   type EditorViewport,
   type PatchTransaction,
+  getDialect,
   invertPatch,
   LATEST_CYODA_VERSION,
   SUPPORTED_CYODA_VERSIONS,
   parseImportPayload,
   serializeImportPayload,
   PatchConflictError,
+  type ValidationFix,
   type Workflow,
   type WorkflowEditorDocument,
   type WorkflowUiMeta,
@@ -54,6 +57,7 @@ import {
   type JsonEditStatus,
   type WorkflowJsonEditorConfig,
 } from "./WorkflowJsonEditor.js";
+import { LoadNoticesBanner } from "./LoadNoticesBanner.js";
 
 /** Controls which chrome elements the editor shell renders. All fields default to `true`. */
 export interface ChromeOptions {
@@ -113,6 +117,40 @@ export interface WorkflowEditorProps {
    * should opt in explicitly with `developerMode={true}`.
    */
   developerMode?: boolean;
+  /**
+   * Human-readable notices describing what happened while the *host* parsed
+   * `document` — e.g. fields the parser did not recognise and dropped (see
+   * `ParseResult.warnings` / `ParseResult.issues` in `@cyoda/workflow-core`).
+   * The editor never parses; it only displays what the host hands it.
+   *
+   * These are load-time facts, not the document's current state — that's
+   * what `derived.issues` / the issues drawer already show, recomputed from
+   * the live document on every edit. Dropped-on-import fields have no trace
+   * left in the document by the time that recomputation runs, so they can
+   * only be surfaced here, once, at load.
+   *
+   * Rendered as a dismissible banner. Dismissal is content-aware, not
+   * reference-aware: a re-render that passes a *different* set of notices
+   * (order-sensitive) re-arms the banner even if it was previously
+   * dismissed; a re-render with the same notices — even in a newly
+   * allocated array, e.g. from an inline `loadNotices={warnings.filter(...)}`
+   * expression — leaves a prior dismissal alone. There is no need to
+   * memoize this array or otherwise manage its identity across renders.
+   *
+   * This is what makes it safe to keep a single `WorkflowEditor` instance
+   * mounted across a host loading several documents in a row (see
+   * `apps/docs-embed-demo` `LocalFileEditorPage`): each load hands the
+   * banner that document's own notices, and dismissing one document's
+   * banner never suppresses the next document's. (`document` itself only
+   * seeds the editor's internal state at mount — a host that wants the
+   * displayed document to change on a later load needs to remount the
+   * editor regardless of this prop, e.g. by keying it on a file/document id;
+   * remounting also resets the dismissal, independently of the check
+   * described above.)
+   *
+   * Omit, or pass an empty array, when there is nothing to report.
+   */
+  loadNotices?: string[];
 }
 
 interface PendingDelete {
@@ -133,6 +171,20 @@ function hasPersistedWorkflowUi(meta: WorkflowUiMeta | undefined): meta is Workf
   return !!meta && Object.values(meta).some((value) => value !== undefined);
 }
 
+/**
+ * Order-sensitive content equality for `loadNotices` arrays. Same notices in
+ * a different order is not a case worth distinguishing (a host would have no
+ * reason to reorder them without the underlying notices actually changing),
+ * so this deliberately does not sort before comparing.
+ */
+function sameLoadNotices(a: string[] | undefined, b: string[] | undefined): boolean {
+  if (a === b) return true;
+  const left = a ?? [];
+  const right = b ?? [];
+  if (left.length !== right.length) return false;
+  return left.every((notice, index) => notice === right[index]);
+}
+
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   if (target.isContentEditable) return true;
@@ -147,11 +199,11 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return target.closest('[role="textbox"], .monaco-editor') !== null;
 }
 
-function defaultNewWorkflow(existing: string[]): Workflow {
+function defaultNewWorkflow(existing: string[], cyodaVersion: CyodaSchemaVersion): Workflow {
   let n = existing.length + 1;
   while (existing.includes(`workflow${n}`)) n++;
   return {
-    version: "1.0",
+    version: getDialect(cyodaVersion).schemaVersionTag,
     name: `workflow${n}`,
     initialState: "start",
     active: true,
@@ -183,6 +235,7 @@ export function WorkflowEditor({
   jsonEditor = null,
   onJsonStatusChange,
   developerMode = false,
+  loadNotices,
 }: WorkflowEditorProps) {
   const mergedMessages = useMemo(() => mergeMessages(messages), [messages]);
   const editorConfig = useMemo(() => ({ developerMode }), [developerMode]);
@@ -224,6 +277,19 @@ export function WorkflowEditor({
   const [activeSurface, setActiveSurface] = useState<WorkflowEditorActiveSurface>("graph");
   const [jsonStatus, setJsonStatus] = useState<JsonEditStatus>({ status: "idle" });
   const [openIssueSeverity, setOpenIssueSeverity] = useState<IssueSeverity | null>(null);
+  const [loadNoticesDismissed, setLoadNoticesDismissed] = useState(false);
+  // Tracks the notices *content* last seen, not the array reference — see the
+  // `loadNotices` prop doc. Reference identity is unusable here: a host
+  // building the array inline (e.g. `loadNotices={warnings.filter(...)}`)
+  // constructs a new array on every render regardless of whether anything
+  // changed, and reference-tracking would then re-arm the banner on every
+  // render, making it impossible to dismiss. Loading a genuinely different
+  // document is already covered independently of this comparison — the
+  // `document` prop only seeds `useEditorStore` on mount, with no re-sync
+  // effect, so a host switching documents must remount the editor, which
+  // resets `loadNoticesDismissed` for free. This comparison only needs to
+  // catch the same-mount case: re-arm when the notices actually differ.
+  const lastLoadNoticesRef = useRef(loadNotices);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [placement, setPlacement] = useState<Placement>(() => {
     const loaded = loadPlacement(localStorageKey);
@@ -241,6 +307,8 @@ export function WorkflowEditor({
     document: WorkflowEditorDocument;
     warnings: string[];
   }
+  // Dormant while only one dialect ships (see spec §0). Kept rather than deleted
+  // because a 0.9 dialect will need them; deleting and resurrecting is worse.
   const [pendingVersionSwitch, setPendingVersionSwitch] = useState<PendingVersionSwitch | null>(null);
   const selectionRef = useRef<Selection>(state.selection);
   const documentStateRef = useRef(state.document);
@@ -262,6 +330,18 @@ export function WorkflowEditor({
   useEffect(() => {
     onChange?.(state.document);
   }, [state.document, onChange]);
+
+  useEffect(() => {
+    // The effect dependency is the array reference, so this body runs on
+    // every render where the host passes a new array — including a host
+    // that builds it inline and therefore passes a new (but often
+    // content-identical) array on every render. `sameLoadNotices` is what
+    // keeps that from re-arming a dismissed banner: only an actual content
+    // change resets `loadNoticesDismissed`.
+    if (sameLoadNotices(lastLoadNoticesRef.current, loadNotices)) return;
+    lastLoadNoticesRef.current = loadNotices;
+    setLoadNoticesDismissed(false);
+  }, [loadNotices]);
 
   // Persist layout/comments to localStorage and notify host whenever workflowUi changes.
   useEffect(() => {
@@ -533,6 +613,44 @@ export function WorkflowEditor({
     [actions],
   );
 
+  // No dedicated DomainPatch op targets session.allowCycles on its own — the
+  // only patch that touches it is the coarse "replaceSession" snapshot, which
+  // would also stomp on workflows/importMode/entity/UI state we don't want to
+  // disturb here. So this writes the document directly via silentReplace —
+  // bumping meta.revision by hand, same as handleAutoLayout below, since
+  // applyPatch normally does that — deliberately staying out of undo history.
+  const handleAllowCyclesChange = useCallback(
+    (checked: boolean) => {
+      actions.silentReplace(
+        {
+          session: { ...state.document.session, allowCycles: checked },
+          meta: { ...state.document.meta, revision: state.document.meta.revision + 1 },
+        },
+        { preserveEditorState: true },
+      );
+    },
+    [state.document, actions],
+  );
+
+  // Apply the remediation an issue offers (`ValidationIssue.fix`), invoked from
+  // the issues drawer. `fix.apply` returns a whole new document and bumps
+  // `meta.revision` itself (see the ValidationFix type doc), so the document is
+  // installed as-is rather than being reduced to a session patch — a fix is
+  // free to touch `meta`, and a replaceSession round-trip would drop that.
+  // Written via silentReplace for the same reason handleAllowCyclesChange is:
+  // no DomainPatch op expresses "swap the whole document", and the coarse
+  // replaceSession snapshot would stomp editor state we don't want to disturb.
+  const handleApplyFix = useCallback(
+    (fix: ValidationFix) => {
+      actions.silentReplace(fix.apply(documentStateRef.current), {
+        preserveEditorState: true,
+      });
+    },
+    [actions],
+  );
+
+  // Dormant while only one dialect ships (see spec §0). Kept rather than deleted
+  // because a 0.9 dialect will need them; deleting and resurrecting is worse.
   const handleVersionChange = useCallback(
     (targetVersion: string) => {
       const wireJson = serializeImportPayload(state.document);
@@ -544,9 +662,9 @@ export function WorkflowEditor({
       };
       // Detect lossiness by comparing wire output before and after the version
       // switch. parseImportPayload warnings only cover toCanonical-phase drops
-      // (e.g. scheduled processors); serialization-phase drops (e.g. v0.7
-      // omitting transitions[].schedule) are invisible to warnings but visible
-      // in the serialized output.
+      // (e.g. scheduled processors); serialization-phase drops (e.g. a target
+      // dialect omitting an optional field the source dialect carries) are
+      // invisible to warnings but visible in the serialized output.
       const beforeJson = wireJson;
       const afterJson = serializeImportPayload(docWithVersion);
       const parseWarnings = result.warnings ?? [];
@@ -1020,6 +1138,10 @@ export function WorkflowEditor({
         onKeyDown={handleKeyDown}
         tabIndex={-1}
       >
+        <LoadNoticesBanner
+          notices={loadNoticesDismissed ? [] : (loadNotices ?? [])}
+          onDismiss={() => setLoadNoticesDismissed(true)}
+        />
         {chrome?.tabs !== false && showTabs && (
           <WorkflowTabs
             workflows={workflows}
@@ -1027,7 +1149,10 @@ export function WorkflowEditor({
             readOnly={readOnly}
             onSelect={actions.setActiveWorkflow}
             onAdd={() => {
-              const newWorkflow = defaultNewWorkflow(workflows.map((w) => w.name));
+              const newWorkflow = defaultNewWorkflow(
+                workflows.map((w) => w.name),
+                state.document.meta.cyodaVersion ?? LATEST_CYODA_VERSION,
+              );
               dispatch({ op: "addWorkflow", workflow: newWorkflow });
               actions.setActiveWorkflow(newWorkflow.name);
             }}
@@ -1208,6 +1333,11 @@ export function WorkflowEditor({
           />
         )}
         {helpOpen && <HelpModal onCancel={() => setHelpOpen(false)} />}
+        {/*
+          Dormant while only one dialect ships (see spec §0). Kept rather than
+          deleted because a 0.9 dialect will need them; deleting and
+          resurrecting is worse.
+        */}
         {pendingVersionSwitch && (
           <VersionSwitchModal
             fromVersion={`v${state.document.meta.cyodaVersion ?? LATEST_CYODA_VERSION}`}
@@ -1232,6 +1362,8 @@ export function WorkflowEditor({
               onIssueBadgeClick={(severity) =>
                 setOpenIssueSeverity((prev) => (prev === severity ? null : severity))
               }
+              allowCycles={state.document.session.allowCycles === true}
+              onAllowCyclesChange={handleAllowCyclesChange}
               toolbarStart={toolbarStart}
               toolbarCenter={toolbarCenter}
               toolbarEnd={toolbarEnd}
@@ -1245,6 +1377,7 @@ export function WorkflowEditor({
               onJumpTo={(selection) => {
                 handleSelectionChange(selection);
               }}
+              onApplyFix={readOnly ? undefined : handleApplyFix}
             />
           </div>
         )}

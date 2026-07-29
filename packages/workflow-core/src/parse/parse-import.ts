@@ -25,11 +25,60 @@ export interface ParseResult<T> {
   document?: WorkflowEditorDocument;
   issues: ValidationIssue[];
   /**
-   * Non-fatal notes from the dialect's `toCanonical` pass — e.g. a v0.7
-   * `scheduled` processor dropped during normalisation. Additive: callers that
-   * do not read it are unaffected. Omitted when there are no warnings.
+   * Non-fatal notes from the dialect's `toCanonical` pass — e.g.
+   * `processor-config-keys-dropped:<name>:<keys>` when the 0.8 dialect strips
+   * a processor-config key cyoda-go doesn't recognise, or
+   * `processor-keys-dropped:<name>:<keys>` for the same at processor level.
+   * Additive: callers that do not read it are unaffected. Omitted when there
+   * are no warnings.
+   *
+   * Every entry is ALSO mirrored into `issues` as an info-severity
+   * `ValidationIssue` (see {@link dialectWarningToIssue}), which is how these
+   * reach the user — `issues` is what the toolbar pills and the issues drawer
+   * render. This raw array is kept because it is public API and consumers may
+   * parse the machine-readable form.
    */
   warnings?: string[];
+}
+
+/**
+ * Render a dialect `toCanonical` warning as an info-severity issue.
+ *
+ * The wire form is `<code>:<processor name>:<comma-separated keys>`. A
+ * processor name is unconstrained at this point (it has not been through the
+ * name regex yet) and may itself contain `:`, so the code is taken up to the
+ * FIRST separator and the key list from the LAST one.
+ */
+export function dialectWarningToIssue(warning: string): ValidationIssue {
+  const firstColon = warning.indexOf(":");
+  const lastColon = warning.lastIndexOf(":");
+  const code = firstColon === -1 ? warning : warning.slice(0, firstColon);
+  const name = firstColon === lastColon ? "" : warning.slice(firstColon + 1, lastColon);
+  const keys = firstColon === -1 ? "" : warning.slice(lastColon + 1);
+
+  // The two codes below are spelled out as literals rather than passed through
+  // from `code` so `tests/validate/rule-catalog.test.ts` can see them and hold
+  // this file to the same documentation contract as the semantic rules.
+  const detail = { processor: name, keys: keys.split(",").filter((k) => k.length > 0) };
+  if (code === "processor-config-keys-dropped") {
+    return {
+      severity: "info",
+      code: "processor-config-keys-dropped",
+      message: `Processor "${name}": config keys not part of the cyoda-go wire format were dropped on import and will not be saved: ${keys}.`,
+      detail,
+    };
+  }
+  if (code === "processor-keys-dropped") {
+    return {
+      severity: "info",
+      code: "processor-keys-dropped",
+      message: `Processor "${name}": keys not part of the cyoda-go wire format were dropped on import and will not be saved: ${keys}.`,
+      detail,
+    };
+  }
+  // Unknown warning shape (a host-registered dialect may emit its own):
+  // surface it verbatim rather than swallowing it.
+  return { severity: "info", code: "dialect-warning", message: warning };
 }
 
 function parseJsonSafe(json: string): { ok: true; value: unknown } | { ok: false; err: string } {
@@ -107,11 +156,13 @@ export function parseImportPayload(
     };
   }
 
+  const warningIssues = warnings.map(dialectWarningToIssue);
+
   const schemaResult = ImportPayloadSchema.safeParse(canonical);
   if (!schemaResult.success) {
     return {
       ok: false,
-      issues: zodErrorToIssues(schemaResult.error),
+      issues: [...zodErrorToIssues(schemaResult.error), ...warningIssues],
       ...(warnings.length > 0 ? { warnings } : {}),
     };
   }
@@ -120,6 +171,9 @@ export function parseImportPayload(
   const session: WorkflowSession = {
     entity: null,
     importMode: schemaResult.data.importMode,
+    ...(schemaResult.data.allowCycles !== undefined
+      ? { allowCycles: schemaResult.data.allowCycles }
+      : {}),
     workflows: normalizedWorkflows,
   };
 
@@ -127,12 +181,16 @@ export function parseImportPayload(
   meta.cyodaVersion = sourceVersion;
   const document: WorkflowEditorDocument = { session, meta };
 
-  const issues = validateSemantics(session, document);
+  const issues = [...validateSemantics(session, document), ...warningIssues];
   const hasError = issues.some((i) => i.severity === "error");
 
   return {
     ok: !hasError,
-    value: { importMode: session.importMode, workflows: session.workflows },
+    value: {
+      importMode: session.importMode,
+      ...(session.allowCycles !== undefined ? { allowCycles: session.allowCycles } : {}),
+      workflows: session.workflows,
+    },
     document,
     issues,
     ...(warnings.length > 0 ? { warnings } : {}),

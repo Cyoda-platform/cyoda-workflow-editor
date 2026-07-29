@@ -8,7 +8,7 @@ afterEach(cleanup);
 const doc = parseImportPayload(
   JSON.stringify({
     importMode: "MERGE",
-    workflows: [{ version: "1.0", name: "wf", initialState: "NEW", active: true, states: { NEW: { transitions: [] } } }],
+    workflows: [{ version: "1.3", name: "wf", initialState: "NEW", active: true, states: { NEW: { transitions: [] } } }],
   }),
 ).document!;
 

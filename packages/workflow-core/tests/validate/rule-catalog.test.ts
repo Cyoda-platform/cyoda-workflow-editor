@@ -24,17 +24,58 @@ function documentedCodes(md: string): Set<string> {
   return codes;
 }
 
+/**
+ * The severity each code is actually emitted with. Every `code:` literal in
+ * `semantic.ts` is immediately preceded by its `severity:`, so the pair can be
+ * read straight off the source.
+ */
+function sourceSeverities(src: string): Map<string, Set<string>> {
+  const map = new Map<string, Set<string>>();
+  const re = /severity:\s*"(error|warning|info)",\s*code:\s*"([a-z0-9-]+)"/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(src)) !== null) {
+    const set = map.get(m[2]!) ?? new Set<string>();
+    set.add(m[1]!);
+    map.set(m[2]!, set);
+  }
+  return map;
+}
+
+/** Which `## Errors` / `## Warnings` / `## Info` section each code's row sits in. */
+function documentedSections(md: string): Map<string, string> {
+  const sections = new Map<string, string>();
+  let current: string | null = null;
+  for (const line of md.split("\n")) {
+    const heading = /^##\s+(Errors|Warnings|Info)\s*$/.exec(line);
+    if (heading) {
+      current = heading[1]!.toLowerCase().replace(/s$/, "");
+      continue;
+    }
+    if (/^##\s/.test(line)) {
+      current = null;
+      continue;
+    }
+    const row = /^\|\s*`([a-z0-9-]+\*?)`\s*\|/.exec(line);
+    if (row && current) sections.set(row[1]!, current);
+  }
+  return sections;
+}
+
 // This guard is why docs/validation-rules.md can be trusted: add or remove a
 // rule in semantic.ts and this fails until the catalog is updated to match.
 describe("validation rule catalog is in sync with the source", () => {
   const semantic = read("../../src/validate/semantic.ts");
   const schema = read("../../src/validate/schema.ts");
+  const parseImport = read("../../src/parse/parse-import.ts");
   const docs = read("../../../../docs/validation-rules.md");
 
-  const source = sourceCodes(semantic);
+  // parse-import.ts emits issues too (the dialect's dropped-key notes and the
+  // operator-alias conflict), and they render in the same drawer, so they are
+  // held to the same documentation contract.
+  const source = new Set([...sourceCodes(semantic), ...sourceCodes(parseImport)]);
   const documented = documentedCodes(docs);
 
-  test("every code emitted by semantic.ts is documented", () => {
+  test("every code emitted by semantic.ts or parse-import.ts is documented", () => {
     const undocumented = [...source].filter((c) => !documented.has(c)).sort();
     expect(undocumented).toEqual([]);
   });
@@ -50,5 +91,19 @@ describe("validation rule catalog is in sync with the source", () => {
   test("the dynamic schema-* family is emitted and documented", () => {
     expect(schema).toContain("`schema-${issue.code}`");
     expect(documented.has("schema-*")).toBe(true);
+  });
+
+  // Membership, not mere presence: the previous guards only asserted a code
+  // appeared *somewhere* in the file, so a severity change in semantic.ts left
+  // the row sitting under the wrong heading with nothing to catch it.
+  test("each code's catalog section matches the severity it is emitted with", () => {
+    const severities = sourceSeverities(semantic);
+    const sections = documentedSections(docs);
+    const mismatched = [...severities]
+      .map(([code, sevs]) => ({ code, sevs: [...sevs].sort(), section: sections.get(code) }))
+      .filter(({ sevs, section }) => sevs.length !== 1 || section !== sevs[0])
+      .map(({ code, sevs, section }) => `${code}: emitted ${sevs.join("|")}, documented ${section}`)
+      .sort();
+    expect(mismatched).toEqual([]);
   });
 });

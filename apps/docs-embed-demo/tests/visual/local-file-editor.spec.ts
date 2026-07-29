@@ -5,7 +5,7 @@ const WORKFLOW_JSON = JSON.stringify(
     importMode: "MERGE",
     workflows: [
       {
-        version: "1.0",
+        version: "1.3",
         name: "PlaywrightFlow",
         initialState: "start",
         active: true,

@@ -4,6 +4,8 @@ import {
   UNSUPPORTED_OPERATORS,
 } from "../criteria/operators.js";
 import { validateJsonPathSubset } from "../criteria/jsonPathSubset.js";
+import { getDialect, LATEST_CYODA_VERSION, type CyodaDialect } from "../dialect/index.js";
+import { findUnguardedCycles } from "./cycles.js";
 import { idFor as identityIdFor } from "../identity/id-for.js";
 import { NAME_MAX_LENGTH } from "../schema/name.js";
 import type { Criterion } from "../types/criterion.js";
@@ -16,7 +18,16 @@ import { isValidName, walkCriteria } from "./helpers.js";
 
 const LIFECYCLE_FIELDS = new Set(["state", "creationDate", "previousTransition"]);
 
+/** Processor config `retryPolicy` values cyoda-go accepts; anything else is a hard 400. */
+const RETRY_POLICIES = new Set(["NONE", "FIXED", ""]);
+
 export const ANNOTATIONS_MAX_BYTES = 64 * 1024;
+
+/**
+ * Grammar for the in-document workflow schema `version` tag, mirrored exactly
+ * from the server (spec §4): MAJOR.MINOR, no leading zeros.
+ */
+const TAG_RE = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
 
 /**
  * Operator warnings for a criterion's `operation` (issue #22).
@@ -59,10 +70,65 @@ export function validateSemantics(
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
 
+  // Resolve the target dialect ONCE, and never let its throw escape: this
+  // function is documented to never throw, and `validateAll` /
+  // `validateAfterPatch` / the React derive path all call it without a
+  // try/catch, so a throw here tears the editor down mid-render. It is not
+  // hypothetical — every document saved by a pre-0.8.3 build of this library
+  // carries `meta.cyodaVersion: "0.7"`, and that dialect was removed. Report
+  // it instead, so a user whose document names a dialect this build cannot
+  // resolve is told rather than left with rules silently not running.
+  const cyodaVersion = doc?.meta.cyodaVersion ?? LATEST_CYODA_VERSION;
+  let dialect: CyodaDialect | undefined;
+  try {
+    dialect = getDialect(cyodaVersion);
+  } catch (e) {
+    issues.push({
+      severity: "info",
+      code: "cyoda-version-unresolvable",
+      message: `This document targets cyoda-go schema dialect "${cyodaVersion}", which is not registered, so workflow schema version-tag checks are skipped. ${(e as Error).message}`,
+    });
+  }
+
   issues.push(...duplicateWorkflowNames(session));
 
   for (const wf of session.workflows) {
-    issues.push(...validateWorkflow(wf, doc));
+    issues.push(...validateWorkflow(wf, doc, dialect));
+
+    // unguarded-automated-cycle (spec §4): warning, not error — cyoda-go runs
+    // cycle detection against the merged STORED result, not the payload, so a
+    // MERGE can be rejected over a cycle in a workflow this document does not
+    // contain. Necessary but not sufficient; a rule that cannot be complete
+    // must not block a save. No `wf.active` check: the server does not skip
+    // inactive workflows during cycle detection.
+    if (session.allowCycles !== true) {
+      // Both the cycle count and each cycle's path are capped by
+      // `findUnguardedCycles` — a pathological workflow otherwise renders tens
+      // of thousands of multi-KB messages into the issues drawer. Say so in the
+      // message wherever output was cut, so a truncated report never reads as a
+      // complete one.
+      const report = findUnguardedCycles(wf);
+      for (const cycle of report.cycles) {
+        const omitted = cycle.length - cycle.path.length;
+        const rendered =
+          cycle.path.join(" -> ") +
+          (omitted > 0 ? ` -> ... (${omitted} more states omitted)` : "");
+        issues.push({
+          severity: "warning",
+          code: "unguarded-automated-cycle",
+          message: `Workflow "${wf.name}": infinite loop detected: ${rendered} via unguarded automated transitions. cyoda-go rejects this import unless allowCycles is set.`,
+          ...idFor(doc, wf.name, "workflow"),
+        });
+      }
+      if (report.total > report.cycles.length) {
+        issues.push({
+          severity: "warning",
+          code: "unguarded-automated-cycle",
+          message: `Workflow "${wf.name}": ${report.total} unguarded automated cycles detected; only the first ${report.cycles.length} are listed. cyoda-go rejects this import unless allowCycles is set.`,
+          ...idFor(doc, wf.name, "workflow"),
+        });
+      }
+    }
   }
 
   issues.push(...criterionRules(session));
@@ -72,7 +138,13 @@ export function validateSemantics(
 
   if (session.workflows.length === 1) {
     const only = session.workflows[0];
-    if (only && only.criterion !== undefined) {
+    // `!= null` rather than `!== undefined`: same predicate mismatch already
+    // fixed in `validate/cycles.ts` and at automatedOrderingRules below.
+    // `validateSemantics` is public API and `validateAfterPatch` calls it
+    // with zero normalization, so an explicit `criterion: null` (what the
+    // server emits, and what a hand-edited document carries) must read the
+    // same as an absent key — not as "set" — or the rule fires spuriously.
+    if (only && only.criterion != null) {
       issues.push({
         severity: "info",
         code: "unused-workflow-criterion",
@@ -107,6 +179,7 @@ function duplicateWorkflowNames(session: WorkflowSession): ValidationIssue[] {
 function validateWorkflow(
   wf: Workflow,
   doc?: WorkflowEditorDocument,
+  dialect?: CyodaDialect,
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
 
@@ -125,6 +198,68 @@ function validateWorkflow(
       message: `Workflow "${wf.name}" initialState "${wf.initialState}" is not a state.`,
       ...idFor(doc, wf.name, "workflow"),
     });
+  }
+
+  // workflow schema version tag (spec §4)
+  // `dialect` is undefined when the document names one this build cannot
+  // resolve; `validateSemantics` has already reported that once as
+  // `cyoda-version-unresolvable`. Skip the rule rather than guessing which
+  // tags some unknown server accepts.
+  if (dialect) {
+    const accepted = dialect.acceptedSchemaVersions;
+    // Absent means this server does not validate the tag — skip entirely.
+    if (accepted) {
+      const m = TAG_RE.exec(wf.version);
+      if (!m) {
+        issues.push({
+          severity: "error",
+          code: "workflow-schema-version-malformed",
+          message: `Workflow "${wf.name}": workflow schema version "${wf.version}" is not in MAJOR.MINOR form.`,
+          ...idFor(doc, wf.name, "workflow"),
+        });
+      } else {
+        const major = Number(m[1]);
+        const minor = Number(m[2]);
+        const range = accepted.find((r) => r.major === major);
+        if (!range) {
+          issues.push({
+            severity: "error",
+            code: "workflow-schema-version-malformed",
+            message: `Workflow "${wf.name}": workflow schema major version ${major} unsupported on this server; supported majors: [${accepted.map((r) => r.major).join(", ")}].`,
+            ...idFor(doc, wf.name, "workflow"),
+          });
+        } else if (minor > range.maxMinor) {
+          issues.push({
+            severity: "error",
+            code: "workflow-schema-version-malformed",
+            message: `Workflow "${wf.name}": this server supports workflow schema up to ${range.major}.${range.maxMinor}; payload declares ${wf.version}.`,
+            ...idFor(doc, wf.name, "workflow"),
+          });
+        } else if (minor < range.minMinor) {
+          // Warning, not error: the user must open the file to fix it, and
+          // rewriting it silently would churn bytes they did not ask to change.
+          issues.push({
+            severity: "warning",
+            code: "workflow-schema-version-outdated",
+            message: `Workflow "${wf.name}": workflow schema ${wf.version} is no longer accepted; minimum supported in major ${range.major} is ${range.major}.${range.minMinor}.`,
+            ...idFor(doc, wf.name, "workflow"),
+            fix: {
+              label: `Update schema version to ${dialect.schemaVersionTag}`,
+              apply: (d) => ({
+                ...d,
+                session: {
+                  ...d.session,
+                  workflows: d.session.workflows.map((w) =>
+                    w.name === wf.name ? { ...w, version: dialect.schemaVersionTag } : w,
+                  ),
+                },
+                meta: { ...d.meta, revision: d.meta.revision + 1 },
+              }),
+            },
+          });
+        }
+      }
+    }
   }
 
   // name regex
@@ -182,28 +317,54 @@ function validateWorkflow(
           }
           issues.push(...nameLengthIssues(p.name, `Processor name "${p.name}"`));
           if (
-            p.type === "externalized" &&
-            p.startNewTxOnDispatch === true &&
+            p.config?.startNewTxOnDispatch === true &&
             p.executionMode !== "COMMIT_BEFORE_DISPATCH"
           ) {
             issues.push({
-              severity: "warning",
+              severity: "error",
               code: "start-new-tx-without-commit-before-dispatch",
-              message: `Processor "${p.name}" sets startNewTxOnDispatch but executionMode is not COMMIT_BEFORE_DISPATCH.`,
+              message: `Processor "${p.name}": startNewTxOnDispatch=true is only valid with executionMode=COMMIT_BEFORE_DISPATCH (got "${p.executionMode ?? ""}").`,
               ...transitionTargetId(doc, wf.name, stateCode, index),
             });
           }
-          if (p.type === "externalized" && p.config) {
-            if (
-              p.config.crossoverToAsyncMs !== undefined &&
-              p.config.asyncResult !== true
-            ) {
-              issues.push({
-                severity: "warning",
-                code: "crossover-without-async-result",
-                message: `Processor "${p.name}" sets crossoverToAsyncMs but asyncResult is not true.`,
-              });
-            }
+          if (p.config?.retryPolicy !== undefined && !RETRY_POLICIES.has(p.config.retryPolicy)) {
+            issues.push({
+              severity: "error",
+              code: "unknown-retry-policy",
+              message: `Processor "${p.name}": unknown retryPolicy "${p.config.retryPolicy}" (allowed: NONE, FIXED, or empty).`,
+              ...transitionTargetId(doc, wf.name, stateCode, index),
+            });
+          }
+          if (p.config?.asyncResult === true) {
+            issues.push({
+              severity: "warning",
+              code: "async-result-unsupported",
+              message: `Processor "${p.name}": asyncResult=true is rejected by cyoda-go; supported on Cyoda Cloud only.`,
+              ...transitionTargetId(doc, wf.name, stateCode, index),
+            });
+          }
+          if (p.config?.crossoverToAsyncMs !== undefined) {
+            issues.push({
+              severity: "warning",
+              code: "crossover-unsupported",
+              message: `Processor "${p.name}": crossoverToAsyncMs is rejected by cyoda-go; supported on Cyoda Cloud only.`,
+              ...transitionTargetId(doc, wf.name, stateCode, index),
+            });
+          }
+          if (p.type === "internalized") {
+            issues.push({
+              severity: "warning",
+              code: "processor-type-internalized",
+              message: `Processor "${p.name}" uses the reserved type "internalized". cyoda-go accepts it at import but rejects it at dispatch with WORKFLOW_FAILED, so any transition firing this processor will fail at runtime.`,
+              ...transitionTargetId(doc, wf.name, stateCode, index),
+            });
+          } else if (p.type !== "externalized" && p.type !== "") {
+            issues.push({
+              severity: "warning",
+              code: "processor-type-non-canonical",
+              message: `Processor "${p.name}" has a non-canonical type "${p.type}". cyoda-go accepts it today and treats it as externalized, but this permissiveness is documented as narrowing in a future release.`,
+              ...transitionTargetId(doc, wf.name, stateCode, index),
+            });
           }
         }
         for (const [name, count] of pSeen) {
@@ -221,6 +382,59 @@ function validateWorkflow(
             severity: "info",
             code: "processor-overload",
             message: `Transition "${t.name}" has ${t.processors.length} processors (>5).`,
+            ...transitionTargetId(doc, wf.name, stateCode, index),
+          });
+        }
+      }
+
+      // scheduled-transition rules (spec §4)
+      if (t.schedule !== undefined) {
+        // `null` is treated as absent for each mode field, matching the
+        // dialect's own null-stripping elsewhere: a mode key present but
+        // explicitly null is not a mode. This block runs on the canonical
+        // model, which can arrive via `applyPatch` (a `Partial<Transition>`
+        // that bypasses Zod) as well as the parse path, so it can't assume
+        // Zod already ruled out `null`/missing string fields — nor that the
+        // dialect's `delayMs <= 0` drop has run. cyoda-go's own presence test
+        // is `> 0`, so a `delayMs: 0` reaching here via applyPatch is zero
+        // modes to the server and must be zero modes here too.
+        const modes = [
+          typeof t.schedule.delayMs === "number" && t.schedule.delayMs > 0,
+          t.schedule.function !== undefined && t.schedule.function !== null,
+        ].filter(Boolean).length;
+        if (modes !== 1) {
+          issues.push({
+            severity: "error",
+            code: "schedule-mode-required",
+            message: `Transition "${t.name}": exactly one of schedule.delayMs or schedule.function is required.`,
+            ...transitionTargetId(doc, wf.name, stateCode, index),
+          });
+        }
+        if (t.manual === true) {
+          issues.push({
+            severity: "error",
+            code: "schedule-manual-conflict",
+            message: `Transition "${t.name}": manual and scheduled are mutually exclusive.`,
+            ...transitionTargetId(doc, wf.name, stateCode, index),
+          });
+        }
+        const fn = t.schedule.function;
+        if (
+          fn &&
+          ((fn.name ?? "").trim() === "" || (fn.calculationNodesTags ?? "").trim() === "")
+        ) {
+          issues.push({
+            severity: "error",
+            code: "schedule-function-incomplete",
+            message: `Transition "${t.name}": schedule.function requires name and calculationNodesTags.`,
+            ...transitionTargetId(doc, wf.name, stateCode, index),
+          });
+        }
+        if (t.schedule.timeoutMs !== undefined && t.schedule.timeoutMs < 0) {
+          issues.push({
+            severity: "warning",
+            code: "schedule-timeout-negative",
+            message: `Transition "${t.name}": a negative timeoutMs behaves like 0 (drop on any lateness).`,
             ...transitionTargetId(doc, wf.name, stateCode, index),
           });
         }
@@ -668,7 +882,12 @@ function automatedOrderingRules(
         }
       });
 
-      const nullIdx = automated.findIndex(({ t }) => t.criterion === undefined);
+      // `== null` rather than `=== undefined`: `validateSemantics` is public
+      // API and `validateAfterPatch` calls it with zero normalization, so an
+      // explicit `criterion: null` (what the server emits, and what a
+      // hand-edited document carries) must count as unguarded here exactly as
+      // it does in `findUnguardedCycles`, which asks the same question.
+      const nullIdx = automated.findIndex(({ t }) => t.criterion == null);
       if (nullIdx === -1 || nullIdx === automated.length - 1) continue;
 
       const nullEntry = automated[nullIdx]!;

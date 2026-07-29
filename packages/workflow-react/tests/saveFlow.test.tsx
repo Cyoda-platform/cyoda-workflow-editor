@@ -15,7 +15,7 @@ function fixtureWithEntity(): WorkflowEditorDocument {
     importMode: "MERGE",
     workflows: [
       {
-        version: "1.0",
+        version: "1.3",
         name: "w",
         initialState: "a",
         active: true,
@@ -146,7 +146,7 @@ describe("useSaveFlow", () => {
         importMode: "MERGE",
         workflows: [
           {
-            version: "1.0",
+            version: "1.3",
             name: "w",
             initialState: "a",
             active: true,

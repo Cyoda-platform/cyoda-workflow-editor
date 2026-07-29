@@ -23,6 +23,7 @@ export type {
   State,
   Transition,
   TransitionSchedule,
+  ScheduleFunction,
   Annotations,
 } from "./workflow.js";
 export type {
@@ -32,7 +33,7 @@ export type {
   ImportPayload,
   ExportPayload,
 } from "./session.js";
-export type { Severity, ValidationIssue } from "./validation.js";
+export type { Severity, ValidationFix, ValidationIssue } from "./validation.js";
 export type {
   WorkflowEditorDocument,
   EditorViewport,

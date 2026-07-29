@@ -23,3 +23,63 @@ describe("transition tooltip annotations", () => {
     expect(screen.getByText("Notify approver")).toBeTruthy();
   });
 });
+
+describe("transition tooltip processor execution-mode badge (spec §4a)", () => {
+  // An absent executionMode reads as SYNC, the documented default at fire —
+  // not ASYNC_NEW_TX. ProcessorForm's summarizeProcessor already agrees on
+  // this; these two tooltips were the two sites still treating an absent
+  // mode as ASYNC_NEW_TX and rendering no badge at all.
+  test("renders a SYNC badge for a processor with no executionMode", () => {
+    const withoutMode: Transition = {
+      ...t,
+      processors: [{ type: "externalized", name: "notify" }],
+    };
+    render(<TransitionTooltip transition={withoutMode} x={0} y={0} />);
+    expect(screen.getByText("SYNC")).toBeTruthy();
+  });
+
+  test("omits the badge for an explicit ASYNC_NEW_TX (the true default)", () => {
+    const explicitDefault: Transition = {
+      ...t,
+      processors: [{ type: "externalized", name: "notify", executionMode: "ASYNC_NEW_TX" }],
+    };
+    render(<TransitionTooltip transition={explicitDefault} x={0} y={0} />);
+    expect(screen.queryByText("ASYNC NEW TX")).toBeNull();
+    expect(screen.queryByText(/ASYNC/)).toBeNull();
+  });
+});
+
+describe("transition tooltip startNewTxOnDispatch tag", () => {
+  test("renders a NEW TX tag when config.startNewTxOnDispatch is true", () => {
+    const withNewTx: Transition = {
+      ...t,
+      processors: [{
+        type: "externalized",
+        name: "notify",
+        executionMode: "COMMIT_BEFORE_DISPATCH",
+        config: { startNewTxOnDispatch: true },
+      }],
+    };
+    render(<TransitionTooltip transition={withNewTx} x={0} y={0} />);
+    expect(screen.getByText("NEW TX")).toBeTruthy();
+  });
+
+  test("omits the NEW TX tag when config.startNewTxOnDispatch is false", () => {
+    const withoutNewTx: Transition = {
+      ...t,
+      processors: [{
+        type: "externalized",
+        name: "notify",
+        executionMode: "COMMIT_BEFORE_DISPATCH",
+        config: { startNewTxOnDispatch: false },
+      }],
+    };
+    render(<TransitionTooltip transition={withoutNewTx} x={0} y={0} />);
+    expect(screen.queryByText("NEW TX")).toBeNull();
+  });
+
+  test("omits the NEW TX tag when config.startNewTxOnDispatch is unset", () => {
+    render(<TransitionTooltip transition={t} x={0} y={0} />);
+    expect(screen.queryByText("NEW TX")).toBeNull();
+  });
+});

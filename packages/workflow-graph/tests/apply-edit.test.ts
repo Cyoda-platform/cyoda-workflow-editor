@@ -14,7 +14,7 @@ describe("applyGraphEdit", () => {
   test("moveState produces no domain patches", () => {
     const doc = docOf([
       {
-        version: "1.0",
+        version: "1.3",
         name: "wf",
         initialState: "a",
         active: true,
@@ -34,7 +34,7 @@ describe("applyGraphEdit", () => {
   test("toggleDisabled emits updateTransition patch", () => {
     const doc = docOf([
       {
-        version: "1.0",
+        version: "1.3",
         name: "wf",
         initialState: "a",
         active: true,
@@ -64,7 +64,7 @@ describe("applyGraphEdit", () => {
   test("deleteState emits removeState patch", () => {
     const doc = docOf([
       {
-        version: "1.0",
+        version: "1.3",
         name: "wf",
         initialState: "a",
         active: true,

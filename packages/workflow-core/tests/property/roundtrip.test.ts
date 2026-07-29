@@ -22,7 +22,7 @@ const transition = fc.record({
 function makeWorkflow(name: string): fc.Arbitrary<Workflow> {
   return fc
     .record({
-      version: fc.constantFrom("1.0"),
+      version: fc.constantFrom("1.3"),
       name: fc.constant(name),
       initialState: fc.constantFrom("a", "b"),
       active: fc.boolean(),

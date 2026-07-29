@@ -1,8 +1,9 @@
 import type { FunctionConfig } from "./criterion.js";
 import type { Annotations } from "./workflow.js";
 
-// As of the v0.8 major bump the `scheduled` processor type has been removed;
-// `externalized` is the only canonical processor type.
+// cyoda-go 0.8.3 round-trips processor `type` verbatim. The canonical model
+// preserves whatever the server stored; non-canonical values are surfaced as
+// warnings rather than rewritten or dropped.
 export type Processor = ExternalizedProcessor;
 
 export type ExecutionMode =
@@ -12,10 +13,9 @@ export type ExecutionMode =
   | "COMMIT_BEFORE_DISPATCH";
 
 export interface ExternalizedProcessor {
-  type: "externalized";
+  type: string;
   name: string;
   executionMode?: ExecutionMode;
-  startNewTxOnDispatch?: boolean;
   annotations?: Annotations;
   config?: ExternalizedProcessorConfig;
 }
@@ -23,4 +23,8 @@ export interface ExternalizedProcessor {
 export interface ExternalizedProcessorConfig extends FunctionConfig {
   asyncResult?: boolean;
   crossoverToAsyncMs?: number;
+  // cyoda-go 0.8.3 requires this INSIDE config. Both the OpenAPI and
+  // `cyoda help workflows` place it on the processor; both are wrong — the
+  // binary returns 400 `unknown field` for the processor-level position.
+  startNewTxOnDispatch?: boolean;
 }

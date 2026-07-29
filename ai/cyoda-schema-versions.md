@@ -240,3 +240,308 @@ and no `version` tag restamp: `"0.8"` simply carries two more optional fields.
   and only emitted `if options?.annotations && value !== undefined`; a workflow
   that sets none of them serializes to the exact same 0.8 wire bytes as before
   this change.
+
+## v0.8.3 (dialect `"0.8"`)
+
+The `"0.8"` dialect is extended **in place** to target cyoda-go **0.8.3** (workflow
+schema tag `1.2` → `1.3`). This is a **major-class** canonical-model change (new
+`schedule.function` field, `type` widened from a literal to a preserved string,
+`startNewTxOnDispatch` relocated) shipped, per the 0.x policy in `CLAUDE.md`, as a
+Changesets **`minor`** across `@cyoda/workflow-core`, `@cyoda/workflow-react`, and
+`@cyoda/workflow-graph` — never a `major`/`1.0.0`. It also **removes** the `"0.7"`
+dialect (see below) — a scope decision, not something 0.8.3 forced.
+
+Everything below was confirmed against a **running 0.8.3 binary**, not inferred from
+the bundled `cyoda help` docs or the OpenAPI document. Three places the docs disagreed
+with the binary are called out inline; the binary won every time.
+
+- **`transitions[].schedule.function` added — a second, mutually exclusive timing
+  mode.** `schedule` was previously static-delay-only
+  (`{ delayMs: int > 0, timeoutMs?: int > 0 }`, a v0.8.0 SPI placeholder — see
+  above). 0.8.3 **executes** scheduled transitions, and adds a per-entity mode that
+  computes the firing time via a calculation-node callout:
+
+  ```ts
+  interface ScheduleFunction {
+    name: string;
+    resultKind: "Schedule";        // only legal value; enforced by Zod literal
+    calculationNodesTags: string;
+    attachEntity?: boolean;
+    context?: string;
+    responseTimeoutMs?: number;
+  }
+  interface TransitionSchedule {
+    delayMs?: number;              // static mode; canonical only when > 0 — see below
+    function?: ScheduleFunction;   // per-entity mode
+    timeoutMs?: number;            // may be 0 or negative — see below
+  }
+  ```
+
+  `schedule` is **flat, not a discriminated union** — the server validates "exactly
+  one of `delayMs` / `function`" as a cross-field rule, and its own export emits
+  `delayMs: 0` *alongside* `function` (see next item), which a union could not parse
+  without a lossy pre-pass. The XOR is enforced by a Zod `.refine` plus the semantic
+  rule `schedule-mode-required` (fires when the present-mode count, evaluated after
+  normalization, is 0 or 2). `schedule` remains mutually exclusive with
+  `manual: true` (`schedule-manual-conflict`). `ScheduleFunction` does **not** reuse
+  `FunctionConfigSchema`: it requires `name`/`calculationNodesTags`, pins
+  `resultKind` to a literal, and has no `retryPolicy` — a distinct required-field
+  set, not just a `responseTimeoutMs` bounds difference.
+
+  Confirmed **not** feature-gated by the `version` tag: a `schedule.function`
+  workflow tagged `"1.1"` imports successfully.
+
+- **`delayMs`'s presence predicate is `> 0`, not "key exists" — cyoda-go's own
+  export can violate its own rule.** This is the sharper form of a pattern already
+  seen once in this file (v0.8.0 modelled `delayMs: int > 0`, but nothing before
+  this release round-tripped a server *export*, which is where the gap surfaced).
+  Confirmed against the wire:
+
+  | Payload | Server |
+  |---|---|
+  | `{"delayMs": 0}` | 400 — *exactly one of schedule.delayMs or schedule.function is required* |
+  | `{"delayMs": -5}` | 400 — same message |
+  | `{"delayMs": -5, "function": {…}}` | **accepted** (counts as function-only) |
+  | `schedule: null` | **accepted** (treated as absent) |
+
+  **cyoda-go's own export emits `"delayMs": 0` next to a populated `function`** — a
+  Go zero-value with no `omitempty`. Re-importing that export is accepted, because
+  `delayMs: 0` reads as absent by the same predicate. Any parser that treats the key
+  as merely *present* will either reject its own server's export or re-serialize a
+  contradictory payload. The `"0.8"` dialect's `toCanonical` now **drops `delayMs`
+  whenever `<= 0`** as a general normalization pass (not a one-off quirk for the
+  export case) — this is non-lossy, since no payload the server accepts as a static
+  schedule is altered by dropping a `<= 0` value.
+
+  **General lesson for the next dialect author:** cyoda-go's presence tests are not
+  "key exists". Assume every numeric optional field may use a `> 0` (or similar)
+  presence predicate instead of key-presence until you've checked the wire — `delayMs`
+  is the second field in this file's history to work this way, and it will not be
+  the last.
+
+- **`timeoutMs` / `responseTimeoutMs` have no enforced lower bound, despite the
+  OpenAPI declaring `minimum: 0`.** `{"delayMs": 5, "timeoutMs": -1}` is
+  **accepted**, and so is `responseTimeoutMs: -1` on a processor/criterion function
+  config. Both fields now take **any integer** in the canonical schema
+  (`TransitionSchedule.timeoutMs`, `ScheduleFunction.responseTimeoutMs`,
+  `FunctionConfig.responseTimeoutMs`) — previously `.positive()` /
+  `.nonnegative()`, both of which were **stricter than the server** and would fail
+  to round-trip a file cyoda-go itself accepts. `timeoutMs: 0` is legal and means
+  "drop on any lateness"; `timeoutMs < 0` behaves the same as `0` and carries a new
+  non-blocking warning `schedule-timeout-negative` rather than a Zod rejection (the
+  editor must not corrupt a value the server accepts).
+
+  > **Docs disagreement.** The OpenAPI schema's `minimum: 0` is not enforced by the
+  > binary. Do not trust declared bounds in the generated schema; probe the wire.
+
+- **Request-level `allowCycles`.** New optional boolean on the import payload
+  (`ImportPayloadSchema`, `WorkflowSession`), default `false`, bypasses server-side
+  cycle detection. `S1 →scheduled→ S2 →scheduled→ S1` is rejected without it
+  (*infinite loop detected … via unguarded automated transitions*) and accepted
+  with it. Emitted **only when `true`**, so a document that doesn't use it stays
+  byte-identical to pre-0.8.3 output; `DisallowUnknownFields` means the key cannot
+  simply be tacked on for older servers regardless.
+
+  The editor adds its own **non-blocking** `unguarded-automated-cycle` warning
+  (manual: false / non-disabled / criterion-less transitions forming a cycle),
+  suppressed when `allowCycles` is true, so the flag has in-editor meaning. It is a
+  *warning*, deliberately: server-side cycle detection runs against the **merged
+  stored** workflow set, not the payload, so under `importMode: "MERGE"` a clean
+  editor document can still be rejected by a cycle that isn't even in the payload —
+  the editor's rule is necessarily incomplete and must not block a save. Measured
+  detector semantics worth knowing before touching this rule: self-loops count,
+  explicit `criterion: null` counts as unguarded, one guard anywhere in the cycle is
+  enough to clear it, `disabled: true`/`manual: true` on one edge clears it, a
+  `schedule`d transition still counts as automated (does **not** exempt it), and
+  cycles inside an `active: false` workflow are **still rejected** (inactive
+  workflows are not skipped by cycle detection, unlike runtime selection).
+
+  `allowCycles` must survive editor-document persistence too, not just the import
+  payload — `serializeEditorDocument` and `EditorDocumentSchema.session` both needed
+  updating, or the flag round-trips through an import/export but is silently lost
+  on save/reopen (the more common path).
+
+- **Strict `version`-tag validation.** The workflow `version` tag moves from
+  informational (§ "Two distinct version axes", above) to **range-checked**,
+  independent of feature use — validation runs *before* model lookup, so a bad tag
+  400s even against a nonexistent model:
+
+  | Tag | Result |
+  |---|---|
+  | absent / `""` | 400 *version is empty; required MAJOR.MINOR form* |
+  | `"1"`, `"1.0.0"`, `"1.03"` (leading zero) | 400 *not in MAJOR.MINOR form* |
+  | `"1.0"` | 400 *no longer accepted; minimum supported in major 1: 1.1* |
+  | `"1.1"` – `"1.3"` | accepted |
+  | `"1.4"` | 400 *too new; this server supports up to 1.3* |
+
+  Grammar is `^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$` — mirror it exactly, not a looser
+  `\d+\.\d+`. Discovery: `GET /help/workflows/schema-version/versions` →
+  `{"current":"1.3","supported":[{"major":1,"minMinor":1,"maxMinor":3}]}`.
+
+  **The `"0.8"` dialect gains two new required-by-design fields** on `CyodaDialect`:
+  `schemaVersionTag: "1.3"` (consumed by `defaultNewWorkflow` at workflow-*creation*
+  time, before any tree exists to transform) and `acceptedSchemaVersions:
+  [{ major: 1, minMinor: 1, maxMinor: 3 }]` (consumed by the semantic validator; the
+  array shape mirrors the discovery endpoint, allowing a future multi-major
+  deprecation window without a shape change). `schemaVersionTag` is **required** on
+  the `CyodaDialect` interface, deliberately — it breaks compilation for any
+  host-registered custom dialect rather than silently inheriting a wrong default.
+
+  **Export restamps the tag to `1.3` unconditionally, regardless of what was
+  imported.** The editor's own policy differs on purpose: it **preserves an
+  existing tag verbatim** on parse (rewriting it would churn files the user didn't
+  otherwise change — the server restamps on export anyway) and only stamps a fresh
+  `1.3` onto brand-new workflows. A stale `"1.0"` tag is a **warning**
+  (`workflow-schema-version-outdated`) with an offered fix, not a blocking error —
+  the file needs to be *openable* in order to fix it, and silent rewriting isn't
+  acceptable either. Malformed/out-of-range tags (`"1"`, `"2.0"`, `"1.4"`, …) *are*
+  blocking errors (`workflow-schema-version-malformed`), because those can never be
+  legally imported as-is. An absent/empty tag never reaches the semantic layer at
+  all — `WorkflowSchema.version` is a required, non-empty Zod string, so those fail
+  at parse time.
+
+  Do not confuse this axis with the dialect version (`"0.8"`) — see "Two distinct
+  version axes" at the top of this file. This change puts the tag axis's data
+  (`schemaVersionTag`, `acceptedSchemaVersions`) on the dialect-axis object
+  (`CyodaDialect`); the two `MAJOR.MINOR` strings mean entirely different things and
+  it is easy to conflate them when reading `dialect.ts`.
+
+- **`startNewTxOnDispatch` lives inside `config`, not at processor level — both the
+  OpenAPI and `cyoda help workflows` place it wrong.**
+
+  > **Docs disagreement — the most serious one found this release, and the reason
+  > this file's opening warning exists.** `cyoda help workflows` describes it as a
+  > sibling field on the processor object; the OpenAPI's
+  > `ExternalizedProcessorDefinitionDto.startNewTxOnDispatch` agrees. **Both are
+  > wrong.** Confirmed against the wire:
+  >
+  > | Payload | Server |
+  > |---|---|
+  > | `startNewTxOnDispatch` at processor level | 400 `BAD_REQUEST: unknown field "startNewTxOnDispatch"` |
+  > | `startNewTxOnDispatch` inside `config` | **accepted** |
+  > | inside `config`, `true`, but `executionMode: "SYNC"` | 400 `VALIDATION_FAILED: only valid with executionMode=COMMIT_BEFORE_DISPATCH` |
+  >
+  > The server's own export confirms the position:
+  > `"config":{"attachEntity":true,"calculationNodesTags":"t","startNewTxOnDispatch":true}`.
+
+  The editor had this field at processor level (matching the wrong docs), and both
+  directions were broken as a result: **serialize** emitted it where 0.8.3
+  hard-rejects it (every workflow with a `COMMIT_BEFORE_DISPATCH` processor was
+  unimportable), and **parse** silently dropped it from a real 0.8.3 export with
+  zero errors or warnings (Zod strips unknown keys from the config intersection —
+  silent data loss on the library's core round-trip promise). This was a
+  pre-existing defect surfaced by 0.8.3 testing, not something 0.8.3 changed; it is
+  fixed unconditionally as part of this release. Field moved from
+  `ExternalizedProcessor`/`PROCESSOR_FIELDS`/`outputExternalizedProcessor` into
+  `ExternalizedProcessorConfig`/`PROCESSOR_CONFIG_FIELDS`/`outputExternalizedConfig`;
+  `start-new-tx-without-commit-before-dispatch` retargeted to `config` and
+  **promoted from warning to error** (the server hard-400s, so a warning was waving
+  through a guaranteed rejection).
+
+  **Lesson for the next dialect author, stated generally: probe the binary, not the
+  OpenAPI.** The generated schema is wrong here, and `cyoda help` repeats the same
+  error — a bundled doc and a generated schema agreeing with each other is not
+  independent confirmation, since both plausibly come from the same source
+  annotation. Verify anything structural (field placement, nesting) against a real
+  request/response, not against either document.
+
+- **Processor `type` is stored and returned verbatim — no longer a fixed literal.**
+  0.8.3 round-trips whatever string was imported, **including `"internalized"`**,
+  which is accepted at import and rejected only later, at dispatch
+  (`WORKFLOW_FAILED`). The canonical `ExternalizedProcessor.type` widens from
+  `z.literal("externalized")` to a preserved `string`. `coerceCanonicalDefaults`
+  keeps defaulting an **absent** `type` to `"externalized"` (filling an absent value
+  with the server's documented default isn't lossy) but **stops rewriting present
+  values** — it previously rewrote e.g. `"EXTERNAL"` → `"externalized"`, which
+  silently mutated a value the server preserves untouched.
+
+  Two new non-blocking warnings: `processor-type-non-canonical` (type is neither
+  `"externalized"` nor `""` — cyoda-go's own docs warn this permissiveness "will
+  narrow in a future release") and the stronger `processor-type-internalized`
+  (imports cleanly, guaranteed to fail at dispatch). A third,
+  `processor-config-keys-dropped`, covers the half this widening does **not** fix:
+  preserving `type` says nothing about `config` — `DisallowUnknownFields` still
+  strips/rejects config keys the schema doesn't know, so a non-canonical processor's
+  *label* survives but its *payload* can still be silently reduced to `{}` by Zod
+  (or loudly 400 on import, if reduction can't apply). Don't conflate "the type
+  string round-trips" with "the processor round-trips".
+
+  Three UI/downstream consumers were gated on `type === "externalized"` and needed
+  auditing separately from the `TransitionSchedule` audit (a different subtree, a
+  different set of call sites): `ProcessorForm.tsx` (was rendering non-canonical
+  processors as a blank form and **destroying** the preserved type on first edit),
+  the two processor-scoped semantic rules gated on the literal (would have silently
+  stopped firing for non-canonical types, including the now-error
+  `start-new-tx-without-commit-before-dispatch`), and `workflow-graph`'s dominant
+  execution-mode summary (was dropping preserved processors from the count).
+
+- **The `"0.7"` dialect is removed.** `SUPPORTED_CYODA_VERSIONS` becomes `["0.8"]`;
+  `LATEST_CYODA_VERSION` unchanged. This is a **scope decision, not something 0.8.3
+  forced** — 0.7 was legacy ceremony with no known consumers, and its
+  conditionality was complicating every other change in this release (most
+  concretely, `schemaVersionTag: "1.0"` was the one place `"1.0"` survived as a
+  *correct* value; with 0.7 gone, every remaining `"1.0"` in the tree is
+  unambiguously stale and safe to restamp). `cyoda-0_7.ts` is deleted in full;
+  `coerceCanonicalDefaults` (still needed by `"0.8"`) moved to a neutral module
+  before deletion. `getDialect("0.7")` now throws a message naming the removal and
+  pointing at a config upgrade, rather than the generic "unknown version" message —
+  a deliberate drop should not read like a typo. `registerDialect` is public API, so
+  a consumer who still needs 0.7 can register it themselves; this removes *shipped*
+  support only.
+
+  Removing a supported version is breaking, and per the 0.x policy in `CLAUDE.md`
+  ships in the same `minor` as the rest of this release, at no extra release cost.
+  **Follow-up required in `cyoda-dev-console`** (a separate repo, out of scope for
+  this package): drop `"0.7"` from the `cyodaGoVersion` union and default new
+  projects to `"0.8"`, or that host will pass a version this library no longer
+  registers.
+
+  `VersionBadge`/`VersionSwitchModal` (the UI for switching between supported
+  versions) are **kept**, rendered read-only when `SUPPORTED_CYODA_VERSIONS.length
+  === 1` — worth knowing if a 0.9 dialect returns and that UI needs to come back to
+  life rather than be rebuilt.
+
+### Lessons for whoever adds v0.8.4
+
+Three separate places the bundled docs (OpenAPI and/or `cyoda help`) disagreed with
+the running binary surfaced in this release alone — more than in every prior
+version section of this file combined. In order of how much they cost to find:
+
+1. **`startNewTxOnDispatch`'s placement** — both the OpenAPI *and* `cyoda help`
+   agreed with each other, and both were wrong about which object the field lives
+   on. This was the costliest: it was missed on the first design pass specifically
+   *because* it was checked against the OpenAPI document instead of the wire, and
+   the resulting defect was already live (not new to 0.8.3) — every
+   `COMMIT_BEFORE_DISPATCH` workflow was silently mis-handled before this release
+   caught it.
+2. **`delayMs <= 0`'s rejection.** `cyoda help workflows` describes a distinct
+   validation rule for `delayMs <= 0` in static mode. Empirically there is no such
+   rule — `delayMs <= 0` is folded into the "exactly one mode present" check, and
+   the failure the docs describe never actually fires with that wording.
+3. **`timeoutMs`'s lower bound.** The OpenAPI declares `minimum: 0`; the binary
+   enforces none.
+
+> **Probe the binary, not the OpenAPI.** The generated schema is wrong about
+> `startNewTxOnDispatch`'s placement, and `cyoda help` repeats the error. Verify
+> anything structural against the wire.
+>
+> **cyoda-go's presence tests are not "key exists".** `delayMs` is present iff
+> `> 0`. Assume every numeric optional may work this way until checked.
+>
+> **Null-tolerance is broader than any one field suggests.** 0.8.3 accepts `null`
+> for essentially every optional field the schema declares — not just inside
+> `schedule` (where it was first noticed), but transition `criterion` /
+> `processors` / `annotations` / `disabled`, workflow `desc` / `active` /
+> `criterion`, state `transitions`, and so on. The pattern was scoped to `schedule`
+> in an early draft of this release's design and had to be widened after review
+> found it left an unloadable document (`criterion: null`) that another new rule
+> (the cycle detector) needed to be able to see. Test null-tolerance against the
+> whole optional-field surface, not just the field you're currently adding — a
+> scoped fix here tends to be an undercount.
+
+Also worth carrying forward: verification for this release re-ran the same claim
+tables against the binary across three independent review rounds, and in every
+round the defects clustered in whatever had been written most recently, while older
+material held. A section's having survived one review pass is weak evidence about
+whatever gets written after it — re-verify the newest material hardest, not
+evenly.

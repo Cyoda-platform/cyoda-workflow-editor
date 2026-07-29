@@ -11,7 +11,7 @@ function importJson(workflow: Record<string, unknown>): string {
 describe("#21 empty-transition states serialized as {}", () => {
   test("a state with no transitions key parses with transitions: []", () => {
     const json = importJson({
-      version: "1.0",
+      version: "1.3",
       name: "wf",
       initialState: "new",
       active: true,
@@ -31,7 +31,7 @@ describe("#21 empty-transition states serialized as {}", () => {
 describe("#23 workflow.active optional", () => {
   test("a workflow omitting `active` parses with active: true", () => {
     const json = importJson({
-      version: "1.0",
+      version: "1.3",
       name: "wf",
       initialState: "only",
       states: { only: { transitions: [] } },
@@ -47,7 +47,7 @@ describe("#23 workflow.active optional", () => {
 describe("#22 unknown operators round-trip with a warning", () => {
   test("an out-of-set operator parses, round-trips, and warns once", () => {
     const json = importJson({
-      version: "1.0",
+      version: "1.3",
       name: "wf",
       initialState: "new",
       active: true,
@@ -82,7 +82,7 @@ describe("#22 unknown operators round-trip with a warning", () => {
 
   test("a known-but-engine-unimplemented operator warns as unsupported, not unrecognized", () => {
     const json = importJson({
-      version: "1.0",
+      version: "1.3",
       name: "wf",
       initialState: "new",
       active: true,
