@@ -34,6 +34,7 @@ export type {
   Processor,
   ProcessorPointer,
   SaveStatus,
+  ScheduleFunction,
   Severity,
   SimpleCriterion,
   State,

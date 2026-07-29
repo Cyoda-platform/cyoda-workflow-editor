@@ -567,9 +567,9 @@ export function WorkflowEditor({
       };
       // Detect lossiness by comparing wire output before and after the version
       // switch. parseImportPayload warnings only cover toCanonical-phase drops
-      // (e.g. scheduled processors); serialization-phase drops (e.g. v0.7
-      // omitting transitions[].schedule) are invisible to warnings but visible
-      // in the serialized output.
+      // (e.g. scheduled processors); serialization-phase drops (e.g. a target
+      // dialect omitting an optional field the source dialect carries) are
+      // invisible to warnings but visible in the serialized output.
       const beforeJson = wireJson;
       const afterJson = serializeImportPayload(docWithVersion);
       const parseWarnings = result.warnings ?? [];

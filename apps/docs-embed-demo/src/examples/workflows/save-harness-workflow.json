@@ -2,7 +2,7 @@
   "importMode": "REPLACE",
   "workflows": [
     {
-      "version": "1.0",
+      "version": "1.3",
       "name": "SaveFlowScenario",
       "desc": "Payload intended to drive warning-heavy save and diff scenarios.",
       "initialState": "new",

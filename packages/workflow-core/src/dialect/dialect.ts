@@ -24,9 +24,11 @@ export interface ToCanonicalResult {
  * - `workflowsToWire` renders canonical workflows into the plain objects this
  *   cyoda-go version expects on the wire (consumed by the serializer).
  *
- * The 0.7 baseline composes the existing `normalizeOperatorAlias` /
- * `coerceCanonicalDefaults` / `outputWorkflow` helpers; the 0.8 dialect adds
- * `transitions[].schedule` and a strict output allowlist.
+ * The shipped 0.8 dialect composes the `normalizeOperatorAlias` /
+ * `coerceCanonicalDefaults` / `outputWorkflow` helpers and adds
+ * `transitions[].schedule` plus a strict output allowlist. (The 0.7 dialect
+ * these helpers originated in was removed in the 0.8.3 release — see
+ * `ai/cyoda-schema-versions.md`.)
  */
 export interface CyodaDialect {
   /**

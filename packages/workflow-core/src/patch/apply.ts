@@ -243,9 +243,21 @@ export function applyPatch(
         draft.entity = patch.entity;
         return;
       case "replaceSession":
-        draft.workflows = patch.session.workflows;
-        draft.importMode = patch.session.importMode;
+        // Replace every field of WorkflowSession explicitly (entity,
+        // importMode, workflows, allowCycles) — a prior version of this case
+        // copied only three of the four fields and silently dropped
+        // `allowCycles` on every JSON-surface edit. `allowCycles` is optional
+        // and must be *cleared*, not merely left unset, when the incoming
+        // session omits it (Object.assign would skip a missing key and leave
+        // a stale `true` in place).
         draft.entity = patch.session.entity;
+        draft.importMode = patch.session.importMode;
+        draft.workflows = patch.session.workflows;
+        if (patch.session.allowCycles === undefined) {
+          delete draft.allowCycles;
+        } else {
+          draft.allowCycles = patch.session.allowCycles;
+        }
         return;
     }
   });

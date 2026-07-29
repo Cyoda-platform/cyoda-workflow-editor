@@ -256,11 +256,12 @@ export function EditorPage() {
 - Toggle `manual` and `disabled` flags.
 - Reorder within source state.
 - Delete with `removeTransition` inverse for clean undo.
-- `transitions[].schedule` (`delayMs`, optional `timeoutMs`) is part of the
-  canonical model as of cyoda-go v0.8 and round-trips through the editor. It is a
-  schema/SPI placeholder — **configurable but not yet executed by the cyoda-go
-  runtime** (firing a scheduled transition returns 400). A dedicated
-  transition-inspector control for it is a pending follow-up.
+- `transitions[].schedule` (`delayMs` or a `function` callout, optional
+  `timeoutMs`) is part of the canonical model as of cyoda-go v0.8 and
+  round-trips through the editor. As of cyoda-go 0.8.3 the runtime **executes**
+  scheduled transitions on their own; only firing one manually by name is
+  rejected (400 `TRANSITION_NOT_FOUND`). A dedicated transition-inspector
+  control lets you configure a delay or a `ScheduleFunction` trigger.
 
 **Criteria** (on each transition)
 - Add / edit / delete criterion.

@@ -33,9 +33,10 @@ import type { CyodaDialect, ToCanonicalResult } from "./dialect.js";
  * REPLACE/ACTIVATE. See `src/schema/name.ts` and `src/validate/semantic.ts`.
  *
  * Known limitations / deferred:
- * - `transitions[].schedule` is a **schema/SPI placeholder** — configurable and
- *   importable, but the cyoda-go runtime does not yet execute scheduled
- *   transitions (firing one returns 400).
+ * - `transitions[].schedule` — cyoda-go **executes** scheduled transitions on
+ *   their own (as of 0.8.3); only firing one *manually by name* is rejected,
+ *   with a 400 `TRANSITION_NOT_FOUND` ("is scheduled and fires automatically;
+ *   it is not manually fireable").
  * - The `internalized` processor type is **reserved** by v0.8.0 but rejected at
  *   dispatch today; it is deliberately **not** modelled here. A future dialect
  *   author must not repurpose the literal.
