@@ -135,7 +135,11 @@ export function parseImportPayload(
 
   return {
     ok: !hasError,
-    value: { importMode: session.importMode, workflows: session.workflows },
+    value: {
+      importMode: session.importMode,
+      ...(session.allowCycles !== undefined ? { allowCycles: session.allowCycles } : {}),
+      workflows: session.workflows,
+    },
     document,
     issues,
     ...(warnings.length > 0 ? { warnings } : {}),

@@ -19,11 +19,11 @@ describe("allowCycles (spec §1, §3)", () => {
     expect(parsed.document!.session.allowCycles).toBe(true);
   });
 
-  test("defaults to false when absent", () => {
+  test("stays unset (not defaulted to false) when absent from input", () => {
     const parsed = parseImportPayload(
       JSON.stringify({ importMode: "REPLACE", workflows: [WF] }),
     );
-    expect(parsed.document!.session.allowCycles ?? false).toBe(false);
+    expect(parsed.document!.session.allowCycles).toBeUndefined();
   });
 
   test("emits only when true, in importMode/allowCycles/workflows order", () => {
@@ -34,9 +34,16 @@ describe("allowCycles (spec §1, §3)", () => {
     expect(Object.keys(JSON.parse(out))).toEqual(["importMode", "allowCycles", "workflows"]);
   });
 
-  test("is omitted entirely when false, keeping output byte-identical", () => {
+  test("is omitted entirely when absent from input, keeping output byte-identical", () => {
     const parsed = parseImportPayload(
       JSON.stringify({ importMode: "REPLACE", workflows: [WF] }),
+    );
+    expect(JSON.parse(serializeImportPayload(parsed.document!))).not.toHaveProperty("allowCycles");
+  });
+
+  test("is omitted entirely when explicitly false, not just when absent", () => {
+    const parsed = parseImportPayload(
+      JSON.stringify({ importMode: "REPLACE", allowCycles: false, workflows: [WF] }),
     );
     expect(JSON.parse(serializeImportPayload(parsed.document!))).not.toHaveProperty("allowCycles");
   });

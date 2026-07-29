@@ -20,7 +20,9 @@ function wireWorkflows(doc: WorkflowEditorDocument, options?: SerializeOptions) 
 
 /**
  * Serialize an editor document as an ImportPayload JSON string.
- * Import payloads have keys ordered: importMode, workflows.
+ * Import payloads have keys ordered: importMode, allowCycles, workflows.
+ * `allowCycles` is emitted only when `true`; otherwise it is omitted so
+ * payloads that do not use the flag stay byte-identical to today's output.
  */
 export function serializeImportPayload(
   doc: WorkflowEditorDocument,
