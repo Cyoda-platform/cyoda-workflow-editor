@@ -78,6 +78,7 @@ export function LocalFileEditorPage() {
   const monaco = useMemo(() => getMonacoRuntime(), []);
   const fileSystemAccess = supportsFileSystemAccess();
   const [document, setDocument] = useState<WorkflowEditorDocument | null>(null);
+  const [loadNotices, setLoadNotices] = useState<string[]>([]);
   const [currentFileName, setCurrentFileName] = useState<string>("");
   const [fileHandle, setFileHandle] = useState<LocalWorkflowFileHandle | null>(null);
   const [baselineSerialized, setBaselineSerialized] = useState<string | null>(null);
@@ -109,6 +110,12 @@ export function LocalFileEditorPage() {
       const parsed = parseLocalWorkflowFile(opened.text);
       const serialized = serializeImportPayload(parsed.document);
       setDocument(parsed.document);
+      // A fresh array every call (see `extractLoadNotices`) — passing it
+      // straight through to `loadNotices` is what makes a re-open of the
+      // *same* file re-show a previously dismissed banner, same as opening a
+      // different file. `WorkflowEditor` stays mounted across opens here, so
+      // this is the identity signal it relies on (see the prop's doc).
+      setLoadNotices(parsed.notices);
       setCurrentFileName(opened.name);
       setFileHandle(opened.handle);
       setBaselineSerialized(serialized);
@@ -311,6 +318,7 @@ export function LocalFileEditorPage() {
           <div className="local-file-editor__editor-shell" data-testid="local-file-editor-shell">
             <WorkflowEditor
               document={document}
+              loadNotices={loadNotices}
               mode="editor"
               surface="dev-console"
               layout="fullWidth"

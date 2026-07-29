@@ -5,6 +5,7 @@ import {
   type ValidationIssue,
   type WorkflowEditorDocument,
 } from "@cyoda/workflow-core";
+import { extractLoadNotices } from "./workflowDemo.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -58,15 +59,18 @@ export function prepareLocalWorkflowPayload(text: string): string {
 export function parseLocalWorkflowFile(text: string): {
   document: WorkflowEditorDocument;
   issues: ValidationIssue[];
+  notices: string[];
 } {
   try {
     const parsed = parseImportPayload(prepareLocalWorkflowPayload(text));
     if (!parsed.document) {
       throw new Error("Workflow JSON parsed without producing a document.");
     }
+    const issues = parsed.issues ?? [];
     return {
       document: parsed.document,
-      issues: parsed.issues ?? [],
+      issues,
+      notices: extractLoadNotices(issues),
     };
   } catch (error) {
     if (error instanceof ParseJsonError) {

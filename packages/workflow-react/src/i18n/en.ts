@@ -48,6 +48,10 @@ export const defaultMessages = {
     tipMove: "Drag a state to reposition it, or use Auto-arrange to lay out the graph automatically.",
     close: "Close",
   },
+  loadNotices: {
+    heading: "Some content was adjusted while loading this file",
+    dismiss: "Dismiss",
+  },
   issues: {
     title: "Issues",
     none: "No issues to show.",

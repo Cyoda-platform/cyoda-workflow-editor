@@ -141,6 +141,7 @@ export function EditorShowcasePage() {
           <WorkflowEditor
             key={`${selectedFixture.slug}-${mode}-${jsonPlacement}-${docVersion}`}
             document={currentDocument}
+            loadNotices={loaded.notices}
             mode={mode}
             chrome={chrome}
             enableJsonEditor

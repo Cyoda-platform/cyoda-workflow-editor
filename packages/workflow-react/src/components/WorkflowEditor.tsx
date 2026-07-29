@@ -57,6 +57,7 @@ import {
   type JsonEditStatus,
   type WorkflowJsonEditorConfig,
 } from "./WorkflowJsonEditor.js";
+import { LoadNoticesBanner } from "./LoadNoticesBanner.js";
 
 /** Controls which chrome elements the editor shell renders. All fields default to `true`. */
 export interface ChromeOptions {
@@ -116,6 +117,29 @@ export interface WorkflowEditorProps {
    * should opt in explicitly with `developerMode={true}`.
    */
   developerMode?: boolean;
+  /**
+   * Human-readable notices describing what happened while the *host* parsed
+   * `document` — e.g. fields the parser did not recognise and dropped (see
+   * `ParseResult.warnings` / `ParseResult.issues` in `@cyoda/workflow-core`).
+   * The editor never parses; it only displays what the host hands it.
+   *
+   * These are load-time facts, not the document's current state — that's
+   * what `derived.issues` / the issues drawer already show, recomputed from
+   * the live document on every edit. Dropped-on-import fields have no trace
+   * left in the document by the time that recomputation runs, so they can
+   * only be surfaced here, once, at load.
+   *
+   * Rendered as a dismissible banner. Pass a **fresh array** each time a
+   * (possibly different) document is loaded — even if the host reloads the
+   * exact same file — so the banner is a new component input. Reusing the
+   * same array reference across renders (e.g. because the host stores it in
+   * state that outlives that particular load) keeps a prior dismissal in
+   * effect; a new reference un-dismisses the banner, which is what makes it
+   * safe to keep the editor instance mounted across the host loading several
+   * documents in a row (see `apps/docs-embed-demo` `LocalFileEditorPage`).
+   * Omit, or pass an empty array, when there is nothing to report.
+   */
+  loadNotices?: string[];
 }
 
 interface PendingDelete {
@@ -186,6 +210,7 @@ export function WorkflowEditor({
   jsonEditor = null,
   onJsonStatusChange,
   developerMode = false,
+  loadNotices,
 }: WorkflowEditorProps) {
   const mergedMessages = useMemo(() => mergeMessages(messages), [messages]);
   const editorConfig = useMemo(() => ({ developerMode }), [developerMode]);
@@ -227,6 +252,14 @@ export function WorkflowEditor({
   const [activeSurface, setActiveSurface] = useState<WorkflowEditorActiveSurface>("graph");
   const [jsonStatus, setJsonStatus] = useState<JsonEditStatus>({ status: "idle" });
   const [openIssueSeverity, setOpenIssueSeverity] = useState<IssueSeverity | null>(null);
+  const [loadNoticesDismissed, setLoadNoticesDismissed] = useState(false);
+  // Tracks the *array reference* last seen, not its contents — see the
+  // `loadNotices` prop doc. A host that reloads a different document (or
+  // reloads the same file from disk) passes a fresh array each time, which
+  // is exactly the signal that should un-dismiss a previously dismissed
+  // banner; a host that only re-renders without a new load keeps passing the
+  // same reference, which must leave the dismissal alone.
+  const lastLoadNoticesRef = useRef(loadNotices);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [placement, setPlacement] = useState<Placement>(() => {
     const loaded = loadPlacement(localStorageKey);
@@ -267,6 +300,12 @@ export function WorkflowEditor({
   useEffect(() => {
     onChange?.(state.document);
   }, [state.document, onChange]);
+
+  useEffect(() => {
+    if (lastLoadNoticesRef.current === loadNotices) return;
+    lastLoadNoticesRef.current = loadNotices;
+    setLoadNoticesDismissed(false);
+  }, [loadNotices]);
 
   // Persist layout/comments to localStorage and notify host whenever workflowUi changes.
   useEffect(() => {
@@ -1063,6 +1102,10 @@ export function WorkflowEditor({
         onKeyDown={handleKeyDown}
         tabIndex={-1}
       >
+        <LoadNoticesBanner
+          notices={loadNoticesDismissed ? [] : (loadNotices ?? [])}
+          onDismiss={() => setLoadNoticesDismissed(true)}
+        />
         {chrome?.tabs !== false && showTabs && (
           <WorkflowTabs
             workflows={workflows}
