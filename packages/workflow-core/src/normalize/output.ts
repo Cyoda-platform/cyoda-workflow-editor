@@ -4,7 +4,12 @@ import type {
   ExternalizedProcessorConfig,
   Processor,
 } from "../types/processor.js";
-import type { Transition, TransitionSchedule, Workflow } from "../types/workflow.js";
+import type {
+  ScheduleFunction,
+  Transition,
+  TransitionSchedule,
+  Workflow,
+} from "../types/workflow.js";
 
 /**
  * Output normalization (spec §8.2) — deterministic shaping for serialization.
@@ -90,8 +95,24 @@ export function outputTransition(
 }
 
 function outputSchedule(s: TransitionSchedule): Record<string, unknown> {
-  const out: Record<string, unknown> = { delayMs: s.delayMs };
+  const out: Record<string, unknown> = {};
+  if (s.delayMs !== undefined) out["delayMs"] = s.delayMs;
   if (s.timeoutMs !== undefined) out["timeoutMs"] = s.timeoutMs;
+  if (s.function !== undefined) out["function"] = outputScheduleFunction(s.function);
+  return out;
+}
+
+function outputScheduleFunction(f: ScheduleFunction): Record<string, unknown> {
+  const out: Record<string, unknown> = {
+    name: f.name,
+    resultKind: f.resultKind,
+    calculationNodesTags: f.calculationNodesTags,
+  };
+  // `!== undefined`, not `=== true`: an explicit false is meaningful, since an
+  // absent attachEntity means true server-side.
+  if (f.attachEntity !== undefined) out["attachEntity"] = f.attachEntity;
+  if (f.context !== undefined && f.context !== "") out["context"] = f.context;
+  if (f.responseTimeoutMs !== undefined) out["responseTimeoutMs"] = f.responseTimeoutMs;
   return out;
 }
 

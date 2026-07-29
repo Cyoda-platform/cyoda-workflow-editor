@@ -89,7 +89,15 @@ const PROCESSOR_CONFIG_FIELDS = [
   "asyncResult",
   "crossoverToAsyncMs",
 ] as const;
-const SCHEDULE_FIELDS = ["delayMs", "timeoutMs"] as const;
+const SCHEDULE_FIELDS = ["delayMs", "timeoutMs", "function"] as const;
+const SCHEDULE_FUNCTION_FIELDS = [
+  "name",
+  "resultKind",
+  "calculationNodesTags",
+  "attachEntity",
+  "context",
+  "responseTimeoutMs",
+] as const;
 
 /**
  * The allowlisted field sets, exported so tests can assert the v0.8 wire output
@@ -103,6 +111,7 @@ export const V0_8_WIRE_FIELDS = {
   processor: PROCESSOR_FIELDS,
   processorConfig: PROCESSOR_CONFIG_FIELDS,
   schedule: SCHEDULE_FIELDS,
+  scheduleFunction: SCHEDULE_FUNCTION_FIELDS,
 } as const;
 
 const CONFIG_KEYS = new Set(PROCESSOR_CONFIG_FIELDS as readonly string[]);
@@ -248,7 +257,14 @@ function allowlistTransition(t: Record<string, unknown>): Record<string, unknown
     );
   }
   if (isObj(out["schedule"])) {
-    out["schedule"] = pick(out["schedule"] as Record<string, unknown>, SCHEDULE_FIELDS);
+    const sched = pick(out["schedule"] as Record<string, unknown>, SCHEDULE_FIELDS);
+    if (isObj(sched["function"])) {
+      sched["function"] = pick(
+        sched["function"] as Record<string, unknown>,
+        SCHEDULE_FUNCTION_FIELDS,
+      );
+    }
+    out["schedule"] = sched;
   }
   return out;
 }
