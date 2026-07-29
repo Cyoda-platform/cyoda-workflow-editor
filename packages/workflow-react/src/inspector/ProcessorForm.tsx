@@ -40,6 +40,7 @@ function normalizeTags(value: string): string | undefined {
 }
 
 type ProcessorDraft = {
+  type: string;
   name: string;
   executionMode: ExecutionMode;
   startNewTxOnDispatch: boolean;
@@ -53,27 +54,54 @@ type ProcessorDraft = {
   annotations?: Annotations;
 };
 
+// Reads every field regardless of `type` — cyoda-go 0.8.3 round-trips `type`
+// verbatim (EXTERNAL, SCHEDULED, internalized, ""), so a processor whose type
+// isn't the canonical "externalized" must still be visible, not blanked out.
+// The modal renders such drafts read-only (see `readOnly` below) rather than
+// guessing at a shape the editor doesn't actually know.
 function toDraft(processor?: Processor): ProcessorDraft {
-  const externalized = processor?.type === "externalized" ? processor : undefined;
   return {
-    name: externalized?.name ?? "",
-    executionMode: externalized?.executionMode ?? "ASYNC_NEW_TX",
-    startNewTxOnDispatch: externalized?.config?.startNewTxOnDispatch ?? false,
-    attachEntity: externalized?.config?.attachEntity ?? false,
-    calculationNodesTags: externalized?.config?.calculationNodesTags ?? "",
+    type: processor?.type ?? "externalized",
+    name: processor?.name ?? "",
+    executionMode: processor?.executionMode ?? "ASYNC_NEW_TX",
+    startNewTxOnDispatch: processor?.config?.startNewTxOnDispatch ?? false,
+    attachEntity: processor?.config?.attachEntity ?? false,
+    calculationNodesTags: processor?.config?.calculationNodesTags ?? "",
     responseTimeoutMs:
-      externalized?.config?.responseTimeoutMs !== undefined
-        ? String(externalized.config.responseTimeoutMs)
+      processor?.config?.responseTimeoutMs !== undefined
+        ? String(processor.config.responseTimeoutMs)
         : "",
-    retryPolicy: externalized?.config?.retryPolicy ?? "",
-    context: externalized?.config?.context ?? "",
-    asyncResult: externalized?.config?.asyncResult ?? false,
+    retryPolicy: processor?.config?.retryPolicy ?? "",
+    context: processor?.config?.context ?? "",
+    asyncResult: processor?.config?.asyncResult ?? false,
     crossoverToAsyncMs:
-      externalized?.config?.crossoverToAsyncMs !== undefined
-        ? String(externalized.config.crossoverToAsyncMs)
+      processor?.config?.crossoverToAsyncMs !== undefined
+        ? String(processor.config.crossoverToAsyncMs)
         : "",
-    annotations: externalized?.annotations,
+    annotations: processor?.annotations,
   };
+}
+
+/** True for any processor whose type isn't the canonical "externalized" (an
+ * absent/empty type is treated as canonical — see coerceCanonicalDefaults). */
+function isNonCanonicalType(type: string): boolean {
+  return type !== "externalized" && type !== "";
+}
+
+function nonCanonicalTypeMessage(type: string): string {
+  if (type === "internalized") {
+    return (
+      `This processor uses the reserved type "internalized". cyoda-go accepts it at import ` +
+      `but rejects it at dispatch with WORKFLOW_FAILED, so any transition firing this ` +
+      `processor will fail at runtime. Shown read-only to avoid guessing at fields this type ` +
+      `may not actually support.`
+    );
+  }
+  return (
+    `This processor has a non-canonical type "${type}". cyoda-go accepts it today and treats ` +
+    `it as externalized, but this permissiveness is documented as narrowing in a future ` +
+    `release. Shown read-only to avoid guessing at fields this type may not actually support.`
+  );
 }
 
 function toProcessor(draft: ProcessorDraft): Processor {
@@ -96,7 +124,11 @@ function toProcessor(draft: ProcessorDraft): Processor {
   }
 
   return {
-    type: "externalized",
+    // Carries the draft's type through verbatim rather than hardcoding
+    // "externalized" — for a non-canonical type the form is read-only (see
+    // `isNonCanonicalType`), so this only ever writes back the value that was
+    // read in.
+    type: draft.type,
     name: draft.name.trim(),
     executionMode: draft.executionMode,
     ...(Object.keys(config).length > 0 ? { config } : {}),
@@ -165,10 +197,16 @@ export function ProcessorEditorModal({
     setDraft(toDraft(initialProcessor));
   }, [initialProcessor]);
 
+  // A non-canonical type means the editor doesn't actually know this
+  // processor's field shape (cyoda-go round-trips whatever it was given).
+  // Render read-only rather than let Apply write back fields the form merely
+  // assumes — see toDraft/toProcessor above.
+  const readOnly = isNonCanonicalType(draft.type);
+  const fieldsDisabled = disabled || readOnly;
   const error = validateDraft(draft, existingNames, initialProcessor?.name);
 
   const apply = () => {
-    if (disabled || error) return;
+    if (fieldsDisabled || error) return;
     onApply(toProcessor(draft));
   };
 
@@ -184,14 +222,21 @@ export function ProcessorEditorModal({
           </p>
         </header>
 
+        {readOnly && (
+          <div role="alert" style={warningStyle} data-testid="processor-non-canonical-type-warning">
+            {nonCanonicalTypeMessage(draft.type)}
+          </div>
+        )}
+
         <div style={modalBodyStyle}>
           <FormField label="Name">
             <input
               type="text"
               value={draft.name}
+              disabled={fieldsDisabled}
               onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
               data-testid="processor-name-input"
-              style={inputStyle}
+              style={fieldsDisabled ? disabledInputStyle : inputStyle}
             />
           </FormField>
 
@@ -199,6 +244,7 @@ export function ProcessorEditorModal({
             <CustomSelectInput
               value={draft.executionMode}
               options={EXECUTION_MODES.map((mode) => ({ value: mode, label: mode }))}
+              disabled={fieldsDisabled}
               onChange={(next) =>
                 setDraft((current) => ({
                   ...current,
@@ -223,7 +269,7 @@ export function ProcessorEditorModal({
             <input
               type="checkbox"
               checked={draft.startNewTxOnDispatch}
-              disabled={disabled || draft.executionMode !== "COMMIT_BEFORE_DISPATCH"}
+              disabled={fieldsDisabled || draft.executionMode !== "COMMIT_BEFORE_DISPATCH"}
               onChange={(event) =>
                 setDraft((current) => ({ ...current, startNewTxOnDispatch: event.target.checked }))
               }
@@ -236,6 +282,7 @@ export function ProcessorEditorModal({
             <input
               type="checkbox"
               checked={draft.attachEntity}
+              disabled={fieldsDisabled}
               onChange={(event) =>
                 setDraft((current) => ({ ...current, attachEntity: event.target.checked }))
               }
@@ -247,6 +294,7 @@ export function ProcessorEditorModal({
             <input
               type="text"
               value={draft.calculationNodesTags}
+              disabled={fieldsDisabled}
               onChange={(event) =>
                 setDraft((current) => ({
                   ...current,
@@ -254,7 +302,7 @@ export function ProcessorEditorModal({
                 }))
               }
               data-testid="processor-tags-input"
-              style={inputStyle}
+              style={fieldsDisabled ? disabledInputStyle : inputStyle}
             />
           </FormField>
 
@@ -262,13 +310,14 @@ export function ProcessorEditorModal({
             <input
               type="text"
               value={draft.responseTimeoutMs}
+              disabled={fieldsDisabled}
               onChange={(event) =>
                 setDraft((current) => ({
                   ...current,
                   responseTimeoutMs: event.target.value,
                 }))
               }
-              style={inputStyle}
+              style={fieldsDisabled ? disabledInputStyle : inputStyle}
             />
           </FormField>
 
@@ -280,6 +329,7 @@ export function ProcessorEditorModal({
                 { value: "NONE", label: "NONE" },
                 { value: "FIXED", label: "FIXED" },
               ]}
+              disabled={fieldsDisabled}
               onChange={(next) => setDraft((current) => ({ ...current, retryPolicy: next }))}
               testId="processor-retry-policy"
             />
@@ -290,12 +340,12 @@ export function ProcessorEditorModal({
               type="text"
               value={draft.context}
               placeholder="passed verbatim as request parameters"
-              disabled={disabled}
+              disabled={fieldsDisabled}
               onChange={(event) =>
                 setDraft((current) => ({ ...current, context: event.target.value }))
               }
               data-testid="processor-context-input"
-              style={disabled ? disabledInputStyle : inputStyle}
+              style={fieldsDisabled ? disabledInputStyle : inputStyle}
             />
           </FormField>
 
@@ -303,6 +353,7 @@ export function ProcessorEditorModal({
             <input
               type="checkbox"
               checked={draft.asyncResult}
+              disabled={fieldsDisabled}
               onChange={(event) =>
                 setDraft((current) => ({
                   ...current,
@@ -319,15 +370,15 @@ export function ProcessorEditorModal({
             <input
               type="text"
               value={draft.crossoverToAsyncMs}
+              disabled={fieldsDisabled || !draft.asyncResult}
               onChange={(event) =>
                 setDraft((current) => ({
                   ...current,
                   crossoverToAsyncMs: event.target.value,
                 }))
               }
-              disabled={!draft.asyncResult}
               data-testid="processor-crossover-input"
-              style={disabled ? disabledInputStyle : inputStyle}
+              style={fieldsDisabled ? disabledInputStyle : inputStyle}
             />
           </FormField>
         </div>
@@ -338,7 +389,7 @@ export function ProcessorEditorModal({
         >
           <AnnotationsField
             value={draft.annotations}
-            disabled={disabled}
+            disabled={fieldsDisabled}
             modelKey={`processor-${initialProcessor?.name ?? "new"}`}
             onCommit={(a) => setDraft((c) => ({ ...c, annotations: a }))}
             onRemove={() => setDraft((c) => ({ ...c, annotations: undefined }))}
@@ -358,8 +409,8 @@ export function ProcessorEditorModal({
           <button
             type="button"
             onClick={apply}
-            disabled={disabled || !!error}
-            style={disabled || error ? disabledPrimaryBtn : primaryBtn}
+            disabled={fieldsDisabled || !!error}
+            style={fieldsDisabled || error ? disabledPrimaryBtn : primaryBtn}
             data-testid="processor-modal-apply"
           >
             Apply processor
@@ -538,6 +589,15 @@ const errorStyle = {
   background: colors.dangerBg,
   borderRadius: radii.md,
   color: colors.danger,
+  fontSize: 12,
+};
+
+const warningStyle = {
+  padding: "8px 10px",
+  border: `1px solid ${colors.warningBorder}`,
+  background: colors.warningBg,
+  borderRadius: radii.md,
+  color: colors.warning,
   fontSize: 12,
 };
 

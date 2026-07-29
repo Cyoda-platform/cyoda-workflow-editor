@@ -124,22 +124,12 @@ describe("pluggability: a host-registered dialect round-trips", () => {
   });
 });
 
-describe("0.8 known gap: uppercase processor type (task-1-report.md)", () => {
-  // KNOWN GAP: a later task in the cyoda-go-0.8.3 plan widens
-  // `ExternalizedProcessorSchema.type` (currently `z.literal("externalized")`
-  // in schema/processor.ts) to an open string. Task 1 only removes the
-  // dialect-level rewrite that used to coerce "EXTERNAL" -> "externalized";
-  // without that rewrite AND without a schema widening, a raw uppercase
-  // `type` now fails schema validation instead of being silently mutated or
-  // preserved verbatim. This test pins the *current*, temporary failure mode
-  // specifically (ok: false, at least one error-severity issue) rather than
-  // using `test.fails`, which would swallow any thrown/failed result — including
-  // an unrelated regression — as an "expected failure". When the schema widens,
-  // this assertion will start failing (parsed.ok flips to true), which is the
-  // signal to replace it with a preservation assertion like:
-  //   expect(parsed.document!.session.workflows[0]!.states["A"]!
-  //     .transitions[0]!.processors![0]!.type).toBe("EXTERNAL");
-  test("0.8 currently rejects a legacy uppercase processor type (flip when the schema widens)", () => {
+describe("0.8: uppercase processor type (task-1-report.md)", () => {
+  // Task 4 widened `ExternalizedProcessorSchema.type` to an open string, so a
+  // raw uppercase `type` (which cyoda-go 0.8.3 stores and returns verbatim) is
+  // now preserved rather than rejected. See tests/processor/processor-type.test.ts
+  // for the full round-trip and warning coverage.
+  test("0.8 preserves a legacy uppercase processor type verbatim", () => {
     const raw = JSON.stringify({
       importMode: "MERGE",
       workflows: [{
@@ -151,7 +141,8 @@ describe("0.8 known gap: uppercase processor type (task-1-report.md)", () => {
       }],
     });
     const parsed = parseImportPayload(raw);
-    expect(parsed.ok).toBe(false);
-    expect(parsed.issues.some((i) => i.severity === "error")).toBe(true);
+    expect(parsed.ok).toBe(true);
+    expect(parsed.document!.session.workflows[0]!.states["A"]!.transitions[0]!
+      .processors![0]!.type).toBe("EXTERNAL");
   });
 });

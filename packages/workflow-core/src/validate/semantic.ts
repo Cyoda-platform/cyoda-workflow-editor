@@ -204,6 +204,21 @@ function validateWorkflow(
               });
             }
           }
+          if (p.type === "internalized") {
+            issues.push({
+              severity: "warning",
+              code: "processor-type-internalized",
+              message: `Processor "${p.name}" uses the reserved type "internalized". cyoda-go accepts it at import but rejects it at dispatch with WORKFLOW_FAILED, so any transition firing this processor will fail at runtime.`,
+              ...transitionTargetId(doc, wf.name, stateCode, index),
+            });
+          } else if (p.type !== "externalized" && p.type !== "") {
+            issues.push({
+              severity: "warning",
+              code: "processor-type-non-canonical",
+              message: `Processor "${p.name}" has a non-canonical type "${p.type}". cyoda-go accepts it today and treats it as externalized, but this permissiveness is documented as narrowing in a future release.`,
+              ...transitionTargetId(doc, wf.name, stateCode, index),
+            });
+          }
         }
         for (const [name, count] of pSeen) {
           if (count > 1) {

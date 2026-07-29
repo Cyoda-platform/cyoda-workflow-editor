@@ -156,7 +156,8 @@ export function outputProcessor(
   p: Processor,
   options?: OutputOptions,
 ): Record<string, unknown> {
-  // `externalized` is the only processor type since the v0.8 major bump.
+  // `type` is preserved verbatim (see types/processor.ts); the shape below
+  // (name/executionMode/annotations/config) is common to every processor type.
   return outputExternalizedProcessor(p, options);
 }
 
@@ -165,7 +166,7 @@ function outputExternalizedProcessor(
   options?: OutputOptions,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {
-    type: "externalized",
+    type: p.type,
     name: p.name,
   };
   // Omit when absent: the server's documented default at fire is SYNC, and

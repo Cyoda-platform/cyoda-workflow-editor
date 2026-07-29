@@ -1,0 +1,46 @@
+import { describe, expect, test } from "vitest";
+import { parseImportPayload, serializeImportPayload } from "../../src/index.js";
+
+function parse(type: string) {
+  const raw = JSON.stringify({
+    importMode: "MERGE",
+    workflows: [{
+      version: "1.3", name: "w", initialState: "A", active: true,
+      states: { A: { transitions: [{
+        name: "t", next: "A", manual: true,
+        processors: [{ type, name: "p" }],
+      }] } },
+    }],
+  });
+  return parseImportPayload(raw);
+}
+
+describe("processor type is preserved verbatim (spec §1)", () => {
+  test.each(["externalized", "EXTERNAL", "SCHEDULED", "internalized", ""])(
+    "round-trips %j",
+    (type) => {
+      const parsed = parse(type);
+      expect(parsed.issues.filter((i) => i.severity === "error")).toEqual([]);
+      const out = JSON.parse(serializeImportPayload(parsed.document!));
+      expect(out.workflows[0].states.A.transitions[0].processors[0].type).toBe(type);
+    },
+  );
+
+  test("warns on a non-canonical type", () => {
+    const codes = parse("SCHEDULED").issues.map((i) => i.code);
+    expect(codes).toContain("processor-type-non-canonical");
+  });
+
+  test("warns specifically about internalized failing at dispatch", () => {
+    const issue = parse("internalized").issues.find(
+      (i) => i.code === "processor-type-internalized",
+    );
+    expect(issue?.severity).toBe("warning");
+    expect(issue?.message).toMatch(/dispatch/i);
+  });
+
+  test("an empty type is canonical and warns about neither", () => {
+    const codes = parse("").issues.map((i) => i.code);
+    expect(codes).not.toContain("processor-type-non-canonical");
+  });
+});

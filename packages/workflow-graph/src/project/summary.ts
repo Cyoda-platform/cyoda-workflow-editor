@@ -49,15 +49,16 @@ export function summarizeProcessors(
 /**
  * Execution-mode summary (spec §10.4). Only returned when the "dominant"
  * mode is non-default (ASYNC_NEW_TX is the default and omitted).
- * Dominant = mode of the first externalized processor; if none, returns
- * undefined.
+ * Dominant = mode of the first processor; if none, returns undefined.
+ * `executionMode` is meaningful regardless of `type` — cyoda-go preserves
+ * `type` verbatim, and skipping non-"externalized" processors here would
+ * silently drop them from the summary.
  */
 export function summarizeExecution(
   processors: Processor[] | undefined,
 ): ExecutionSummary | undefined {
   if (!processors) return undefined;
   for (const p of processors) {
-    if (p.type !== "externalized") continue;
     const mode = p.executionMode ?? "ASYNC_NEW_TX";
     if (mode === "SYNC") return { kind: "sync" };
     if (mode === "ASYNC_SAME_TX") return { kind: "asyncSameTx" };
