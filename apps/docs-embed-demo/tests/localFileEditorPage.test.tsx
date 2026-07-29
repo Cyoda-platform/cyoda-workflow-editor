@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { applyPatch, type WorkflowEditorDocument } from "@cyoda/workflow-core";
 import { LocalFileEditorPage } from "../src/pages/LocalFileEditorPage.js";
 import type { LocalWorkflowFileHandle } from "../src/lib/localWorkflowFiles.js";
@@ -36,9 +36,19 @@ vi.mock("@cyoda/workflow-react", () => ({
     toolbarEnd?: ReactNode;
     showSaveButton?: boolean;
   }) => {
+    // Mirrors the real WorkflowEditor's behaviour: `document` only seeds
+    // internal state at mount and is never re-synced from a later prop
+    // change. That is what makes this double able to catch a caller that
+    // forgets to remount (e.g. via `key`) when it hands the editor a
+    // different document — without this, the mock would trivially reflect
+    // whatever `document` it was most recently given, which the real
+    // component does not do, and the stale-canvas bug this file regression
+    // tests for would be invisible.
+    const [mountedDocument] = useState(document);
+
     editorState.mutate = () => {
-      const workflow = document.session.workflows[0];
-      const renamed = applyPatch(document, {
+      const workflow = mountedDocument.session.workflows[0];
+      const renamed = applyPatch(mountedDocument, {
         op: "renameWorkflow",
         from: workflow.name,
         to: `${workflow.name}-edited`,
@@ -71,7 +81,7 @@ vi.mock("@cyoda/workflow-react", () => ({
             <button
               type="button"
               data-testid="mock-editor-save"
-              onClick={() => onSave(document)}
+              onClick={() => onSave(mountedDocument)}
             >
               Save
             </button>
@@ -79,7 +89,7 @@ vi.mock("@cyoda/workflow-react", () => ({
           {toolbarCenter}
           {toolbarEnd}
         </div>
-        <p data-testid="mock-workflow-name">{document.session.workflows[0]?.name}</p>
+        <p data-testid="mock-workflow-name">{mountedDocument.session.workflows[0]?.name}</p>
         <button type="button" data-testid="mock-editor-mutate" onClick={() => editorState.mutate?.()}>
           mutate
         </button>
@@ -199,6 +209,33 @@ describe("LocalFileEditorPage", () => {
     expect(screen.getByTestId("local-file-editor-save")).toBeTruthy();
     expect(screen.queryByTestId("mock-editor-save")).toBeNull();
     expect(screen.getByTestId("mock-workflow-name").textContent).toBe("Alpha");
+  });
+
+  it("shows the newly opened document's content, not the previous document's, in the canvas", async () => {
+    mockFileApi.openWorkflowFile
+      .mockResolvedValueOnce({
+        name: "alpha.json",
+        text: makeWorkflowText("Alpha"),
+        handle: makeHandle("alpha.json"),
+      })
+      .mockResolvedValueOnce({
+        name: "beta.json",
+        text: makeWorkflowText("Beta"),
+        handle: makeHandle("beta.json"),
+      });
+
+    render(<LocalFileEditorPage />);
+    fireEvent.click(screen.getByTestId("local-file-editor-open-toolbar"));
+    await waitFor(() => expect(screen.getByTestId("mock-workflow-name").textContent).toBe("Alpha"));
+
+    fireEvent.click(screen.getByTestId("local-file-editor-open-toolbar"));
+
+    // Not just the file-name label or the (separately tested) load-notices
+    // banner — the editor itself must show the second document. Without a
+    // remount, the mocked WorkflowEditor's `document` was only captured at
+    // its first mount and would still read "Alpha" here.
+    await waitFor(() => expect(screen.getByText("beta.json")).toBeTruthy());
+    expect(screen.getByTestId("mock-workflow-name").textContent).toBe("Beta");
   });
 
   it("renders exactly one visible Save button in the loaded editor toolbar", async () => {

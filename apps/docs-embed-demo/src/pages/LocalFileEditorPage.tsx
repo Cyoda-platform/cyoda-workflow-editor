@@ -79,6 +79,11 @@ export function LocalFileEditorPage() {
   const fileSystemAccess = supportsFileSystemAccess();
   const [document, setDocument] = useState<WorkflowEditorDocument | null>(null);
   const [loadNotices, setLoadNotices] = useState<string[]>([]);
+  // Bumped on every successful load (open or reload-from-disk), never on an
+  // in-editor edit. Used as `WorkflowEditor`'s `key` below so each load
+  // remounts the editor instead of leaving a stale instance showing a
+  // now-wrong document — see `loadOpenedWorkflow`.
+  const [loadGeneration, setLoadGeneration] = useState(0);
   const [currentFileName, setCurrentFileName] = useState<string>("");
   const [fileHandle, setFileHandle] = useState<LocalWorkflowFileHandle | null>(null);
   const [baselineSerialized, setBaselineSerialized] = useState<string | null>(null);
@@ -110,12 +115,17 @@ export function LocalFileEditorPage() {
       const parsed = parseLocalWorkflowFile(opened.text);
       const serialized = serializeImportPayload(parsed.document);
       setDocument(parsed.document);
-      // A fresh array every call (see `extractLoadNotices`) — passing it
-      // straight through to `loadNotices` is what makes a re-open of the
-      // *same* file re-show a previously dismissed banner, same as opening a
-      // different file. `WorkflowEditor` stays mounted across opens here, so
-      // this is the identity signal it relies on (see the prop's doc).
+      // `WorkflowEditor` re-arms the banner when this array's *contents*
+      // differ from what it last saw (see the `loadNotices` prop doc) — so
+      // re-opening the exact same file after dismissing its banner leaves it
+      // dismissed, same as any other re-render with unchanged notices. That
+      // is fine: same file, same notices, already acknowledged. What
+      // guarantees the user isn't stuck with a *stale* dismissal is
+      // `loadGeneration` below, which remounts the editor on every load and
+      // so resets the dismissal (and everything else) regardless of whether
+      // the notices text happens to repeat.
       setLoadNotices(parsed.notices);
+      setLoadGeneration((generation) => generation + 1);
       setCurrentFileName(opened.name);
       setFileHandle(opened.handle);
       setBaselineSerialized(serialized);
@@ -317,6 +327,17 @@ export function LocalFileEditorPage() {
           </div>
           <div className="local-file-editor__editor-shell" data-testid="local-file-editor-shell">
             <WorkflowEditor
+              // `document` is only read once at mount (see the WorkflowEditor
+              // prop doc / source) — without a key change here, opening a
+              // second file would leave the first file's document rendered
+              // in the canvas while `loadNotices` (which *is* read every
+              // render) updated to the second file's notices, making the
+              // banner describe a document the user isn't looking at.
+              // Keying on `loadGeneration` forces a fresh mount per load,
+              // discarding undo history, viewport, and dismissal state along
+              // with it — which is the correct reset for "a different file
+              // was opened," not a side effect to work around.
+              key={loadGeneration}
               document={document}
               loadNotices={loadNotices}
               mode="editor"
