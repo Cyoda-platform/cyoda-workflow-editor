@@ -66,9 +66,12 @@ describe("dialect registry", () => {
   test.each(["constructor", "__proto__", "toString", "valueOf", "hasOwnProperty"])(
     "%j is an unknown version, not a prototype-chain hit",
     (name) => {
-      expect(() => getDialect(name)).toThrow(
-        new RegExp(`Unknown cyoda-go schema version "${name.replace(/[$]/g, "\\$")}"`),
-      );
+      // Plain string, not a RegExp: `toThrow` substring-matches, so there is
+      // no escaping to get wrong. The previous version hand-rolled regex
+      // escaping that covered `$` but not backslashes (CodeQL
+      // js/incomplete-sanitization). Not exploitable — the names are literals
+      // — but the fix is to remove the need to escape, not to escape better.
+      expect(() => getDialect(name)).toThrow(`Unknown cyoda-go schema version "${name}"`);
     },
   );
 });
