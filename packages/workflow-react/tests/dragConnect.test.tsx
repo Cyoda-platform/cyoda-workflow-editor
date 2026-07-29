@@ -45,7 +45,7 @@ const TWO_STATE = JSON.stringify({
   importMode: "MERGE",
   workflows: [
     {
-      version: "1.0",
+      version: "1.3",
       name: "wf",
       initialState: "start",
       active: true,
@@ -61,14 +61,14 @@ const TWO_WF = JSON.stringify({
   importMode: "MERGE",
   workflows: [
     {
-      version: "1.0",
+      version: "1.3",
       name: "alpha",
       initialState: "s1",
       active: true,
       states: { s1: { transitions: [] } },
     },
     {
-      version: "1.0",
+      version: "1.3",
       name: "beta",
       initialState: "s2",
       active: true,
@@ -81,7 +81,7 @@ const RECONNECTABLE = JSON.stringify({
   importMode: "MERGE",
   workflows: [
     {
-      version: "1.0",
+      version: "1.3",
       name: "wf",
       initialState: "start",
       active: true,
@@ -111,7 +111,7 @@ const DUPLICATE_SOURCE = JSON.stringify({
   importMode: "MERGE",
   workflows: [
     {
-      version: "1.0",
+      version: "1.3",
       name: "wf",
       initialState: "start",
       active: true,
@@ -129,7 +129,7 @@ const SAME_NAME_DIFFERENT_SOURCE = JSON.stringify({
   importMode: "MERGE",
   workflows: [
     {
-      version: "1.0",
+      version: "1.3",
       name: "wf",
       initialState: "start",
       active: true,

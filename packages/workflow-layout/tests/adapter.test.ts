@@ -15,7 +15,7 @@ const linear = {
   importMode: "MERGE",
   workflows: [
     {
-      version: "1.0",
+      version: "1.3",
       name: "wf",
       initialState: "draft",
       active: true,
@@ -41,7 +41,7 @@ const fourState = {
   importMode: "MERGE",
   workflows: [
     {
-      version: "1.0",
+      version: "1.3",
       name: "wf",
       initialState: "new",
       active: true,
@@ -103,7 +103,7 @@ const branching = {
   importMode: "MERGE",
   workflows: [
     {
-      version: "1.0",
+      version: "1.3",
       name: "wf",
       initialState: "start",
       active: true,
@@ -148,7 +148,7 @@ const ndaWorkflow = {
   importMode: "MERGE",
   workflows: [
     {
-      version: "1.0",
+      version: "1.3",
       name: "wf",
       initialState: "DRAFT",
       active: true,

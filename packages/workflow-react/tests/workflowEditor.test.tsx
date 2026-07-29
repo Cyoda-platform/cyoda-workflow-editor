@@ -16,7 +16,7 @@ const doc = parseImportPayload(
     importMode: "MERGE",
     workflows: [
       {
-        version: "1.0",
+        version: "1.3",
         name: "wf",
         initialState: "NEW",
         active: true,
@@ -33,7 +33,7 @@ const cycleDoc = parseImportPayload(
     importMode: "MERGE",
     workflows: [
       {
-        version: "1.0",
+        version: "1.3",
         name: "wf",
         initialState: "A",
         active: true,

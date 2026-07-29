@@ -19,7 +19,7 @@ function loadDoc(schedule?: unknown): WorkflowEditorDocument {
       importMode: "MERGE",
       workflows: [
         {
-          version: "1.0",
+          version: "1.3",
           name: "wf",
           initialState: "a",
           active: true,
@@ -406,7 +406,7 @@ describe("TransitionForm processor type chip (task 14 defect fix)", () => {
         importMode: "MERGE",
         workflows: [
           {
-            version: "1.0",
+            version: "1.3",
             name: "wf",
             initialState: "a",
             active: true,

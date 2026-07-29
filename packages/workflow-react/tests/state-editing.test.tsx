@@ -12,7 +12,7 @@ function doc(states: string[], initialState = states[0]!): WorkflowEditorDocumen
   const result = parseImportPayload(
     JSON.stringify({
       importMode: "MERGE",
-      workflows: [{ version: "1.0", name: "wf", initialState, active: true, states: stateMap }],
+      workflows: [{ version: "1.3", name: "wf", initialState, active: true, states: stateMap }],
     }),
   );
   if (!result.document) throw new Error("fixture failed");

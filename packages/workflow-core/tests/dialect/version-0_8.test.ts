@@ -11,7 +11,7 @@ function importJson(workflow: Record<string, unknown>): string {
 }
 
 const v08Workflow = {
-  version: "1.0",
+  version: "1.3",
   name: "wf",
   initialState: "new",
   active: true,
@@ -125,7 +125,7 @@ function assertKeysSubset(obj: unknown, allowed: readonly string[]): void {
 }
 
 const annotatedWorkflow = {
-  version: "1.0",
+  version: "1.3",
   name: "wf",
   initialState: "new",
   active: true,

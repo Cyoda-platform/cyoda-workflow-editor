@@ -12,7 +12,7 @@ describe("semantic validation", () => {
       importMode: "MERGE",
       workflows: [
         {
-          version: "1.0",
+          version: "1.3",
           name: "clean",
           initialState: "start",
           active: true,
@@ -44,7 +44,7 @@ describe("semantic validation", () => {
       importMode: "MERGE",
       workflows: [
         {
-          version: "1.0",
+          version: "1.3",
           name: "wf",
           initialState: "missing",
           active: true,
@@ -62,7 +62,7 @@ describe("semantic validation", () => {
       importMode: "MERGE",
       workflows: [
         {
-          version: "1.0",
+          version: "1.3",
           name: "wf",
           initialState: "a",
           active: true,
@@ -84,7 +84,7 @@ describe("semantic validation", () => {
       importMode: "MERGE",
       workflows: [
         {
-          version: "1.0",
+          version: "1.3",
           name: "wf",
           initialState: "a",
           active: true,
@@ -103,7 +103,7 @@ describe("semantic validation", () => {
       importMode: "MERGE",
       workflows: [
         {
-          version: "1.0",
+          version: "1.3",
           name: "wf",
           initialState: "a",
           active: true,
@@ -127,7 +127,7 @@ describe("semantic validation", () => {
       importMode: "MERGE",
       workflows: [
         {
-          version: "1.0",
+          version: "1.3",
           name: "wf",
           initialState: "a",
           active: true,
@@ -162,7 +162,7 @@ describe("semantic validation", () => {
       importMode: "MERGE",
       workflows: [
         {
-          version: "1.0",
+          version: "1.3",
           name: "wf",
           initialState: "a",
           active: true,
@@ -186,7 +186,7 @@ describe("semantic validation", () => {
 
 function makeWf(name: string) {
   return {
-    version: "1.0",
+    version: "1.3",
     name,
     initialState: "s",
     active: true,

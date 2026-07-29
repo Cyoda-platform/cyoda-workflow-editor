@@ -100,7 +100,7 @@ function makeWorkflowText(name = "Local workflow"): string {
       importMode: "MERGE",
       workflows: [
         {
-          version: "1.0",
+          version: "1.3",
           name,
           initialState: "start",
           active: true,
@@ -126,7 +126,7 @@ function makeWorkflowTextWithImplicitTerminalStates(name = "Local workflow"): st
       importMode: "REPLACE",
       workflows: [
         {
-          version: "1.0",
+          version: "1.3",
           name,
           initialState: "start",
           active: true,

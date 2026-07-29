@@ -16,7 +16,7 @@ function importJson(workflow: Record<string, unknown>): string {
 }
 
 const baseWorkflow = {
-  version: "1.0",
+  version: "1.3",
   name: "wf",
   initialState: "new",
   active: true,

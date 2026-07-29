@@ -9,7 +9,7 @@ import { defaultMessages } from "../src/i18n/en.js";
 
 afterEach(cleanup);
 
-const wf: Workflow = { version: "1.0", name: "wf", initialState: "NEW", active: true, states: { NEW: { transitions: [] } } };
+const wf: Workflow = { version: "1.3", name: "wf", initialState: "NEW", active: true, states: { NEW: { transitions: [] } } };
 const wrap = (ui: React.ReactNode) => render(<I18nContext.Provider value={defaultMessages}>{ui}</I18nContext.Provider>);
 
 // WorkflowForm and TransitionForm both now render a *second* "Add annotations"

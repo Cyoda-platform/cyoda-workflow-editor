@@ -14,7 +14,7 @@ describe("projectToGraph", () => {
       importMode: "MERGE",
       workflows: [
         {
-          version: "1.0",
+          version: "1.3",
           name: "wf",
           initialState: "a",
           active: true,
@@ -42,7 +42,7 @@ describe("projectToGraph", () => {
       importMode: "MERGE",
       workflows: [
         {
-          version: "1.0",
+          version: "1.3",
           name: "wf",
           initialState: "only",
           active: true,
@@ -59,7 +59,7 @@ describe("projectToGraph", () => {
       importMode: "MERGE",
       workflows: [
         {
-          version: "1.0",
+          version: "1.3",
           name: "wf",
           initialState: "s",
           active: true,
@@ -82,7 +82,7 @@ describe("projectToGraph", () => {
       importMode: "MERGE",
       workflows: [
         {
-          version: "1.0",
+          version: "1.3",
           name: "wf",
           initialState: "a",
           active: true,
@@ -105,7 +105,7 @@ describe("projectToGraph", () => {
       importMode: "MERGE",
       workflows: [
         {
-          version: "1.0",
+          version: "1.3",
           name: "wf",
           initialState: "a",
           active: true,
@@ -138,7 +138,7 @@ describe("projectToGraph", () => {
       importMode: "MERGE",
       workflows: [
         {
-          version: "1.0",
+          version: "1.3",
           name: "wf",
           initialState: "a",
           active: true,
@@ -164,7 +164,7 @@ describe("projectToGraph", () => {
       importMode: "MERGE",
       workflows: [
         {
-          version: "1.0",
+          version: "1.3",
           name: "wf",
           initialState: "a",
           active: true,
@@ -211,7 +211,7 @@ describe("projectToGraph", () => {
       importMode: "MERGE",
       workflows: [
         {
-          version: "1.0",
+          version: "1.3",
           name: "wf",
           initialState: "a",
           active: true,
