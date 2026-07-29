@@ -11,6 +11,16 @@ function parse(transition: Record<string, unknown>) {
   }));
 }
 
+function parseStates(states: Record<string, unknown>) {
+  return parseImportPayload(JSON.stringify({
+    importMode: "MERGE",
+    workflows: [{
+      version: "1.3", name: "w", initialState: "A", active: true,
+      states,
+    }],
+  }));
+}
+
 const FN = { name: "c", resultKind: "Schedule", calculationNodesTags: "s" };
 
 describe("0.8 dialect normalization (spec §2)", () => {
@@ -46,9 +56,49 @@ describe("0.8 dialect normalization (spec §2)", () => {
     ["criterion", { name: "t", next: "A", manual: true, criterion: null }],
     ["processors", { name: "t", next: "A", manual: true, processors: null }],
     ["disabled", { name: "t", next: "A", manual: true, disabled: null }],
+    ["annotations", { name: "t", next: "A", manual: true, annotations: null }],
   ])("strips a null %s", (_label, transition) => {
     const parsed = parse(transition as Record<string, unknown>);
     expect(parsed.issues.filter((i) => i.severity === "error")).toEqual([]);
+  });
+
+  test("treats state.transitions: null as the same default a transition-less state gets", () => {
+    const parsed = parseStates({ A: { transitions: null } });
+    expect(parsed.issues.filter((i) => i.severity === "error")).toEqual([]);
+    expect(parsed.document!.session.workflows[0]!.states["A"]!.transitions).toEqual([]);
+  });
+
+  test("treats a null state object the same as a transition-less state", () => {
+    const parsed = parseStates({ A: null });
+    expect(parsed.issues.filter((i) => i.severity === "error")).toEqual([]);
+    expect(parsed.document!.session.workflows[0]!.states["A"]!.transitions).toEqual([]);
+  });
+
+  test("treats processors[].config: null as absent", () => {
+    const parsed = parse({
+      name: "t", next: "A", manual: true,
+      processors: [{ type: "externalized", name: "p", config: null }],
+    });
+    expect(parsed.issues.filter((i) => i.severity === "error")).toEqual([]);
+    const proc = parsed.document!.session.workflows[0]!.states["A"]!.transitions[0]!.processors?.[0];
+    expect(proc).not.toHaveProperty("config");
+  });
+
+  test("strips null-valued keys inside processor config without warning", () => {
+    const parsed = parse({
+      name: "t", next: "A", manual: true,
+      processors: [{
+        type: "externalized", name: "p",
+        config: { context: null, calculationNodesTags: "x" },
+      }],
+    });
+    expect(parsed.issues.filter((i) => i.severity === "error")).toEqual([]);
+    // context is a known config key (PROCESSOR_CONFIG_FIELDS) — nulling it
+    // out must not be mistaken for an unknown, silently-dropped key.
+    expect(parsed.warnings ?? []).toEqual([]);
+    const cfg = parsed.document!.session.workflows[0]!.states["A"]!.transitions[0]!.processors?.[0]?.config;
+    expect(cfg).not.toHaveProperty("context");
+    expect(cfg?.calculationNodesTags).toBe("x");
   });
 
   test("warns when unknown processor config keys are discarded", () => {

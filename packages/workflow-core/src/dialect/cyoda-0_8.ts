@@ -113,7 +113,15 @@ const CONFIG_KEYS = new Set(PROCESSOR_CONFIG_FIELDS as readonly string[]);
  * - Drop `delayMs` when `<= 0`. cyoda-go's presence test is `> 0`, not "key
  *   exists" — and its own export emits `delayMs: 0` beside `function`.
  * - Strip `null`-valued optional keys. The server accepts `null` for nearly
- *   every optional field; Zod's `.optional()` rejects it.
+ *   every optional field; Zod's `.optional()` rejects it. This is done
+ *   shallowly, at each known level (workflow/state/transition/schedule/
+ *   schedule.function/processor config), never recursively — criterion trees
+ *   (`value: null` for IS_NULL/NOT_NULL) and `annotations`/
+ *   `criterionAnnotations` (opaque client data) must never be touched.
+ * - Collapse a `null` state, or a `null`/absent `transitions` on a state, to
+ *   the same default a transition-less state already gets (`StateSchema`
+ *   defaults `transitions` to `[]`).
+ * - Treat a `null` processor `config` as absent.
  * - Report discarded processor config keys. Zod strips unknown keys silently,
  *   which would turn an invalid processor into a quietly-emptied one.
  */
@@ -134,12 +142,23 @@ function normalize08(value: unknown): { value: unknown; warnings: string[] } {
     const nextStates: Record<string, unknown> = {};
 
     for (const [code, state] of Object.entries(states)) {
-      if (!isObj(state) || !Array.isArray(state["transitions"])) {
+      // A `null` state (the whole entry) and a `null`/absent `transitions`
+      // both collapse to the same default a transition-less state already
+      // gets: `StateSchema.transitions` defaults missing input to `[]`.
+      if (state === null) {
+        nextStates[code] = {};
+        continue;
+      }
+      if (!isObj(state)) {
         nextStates[code] = state;
         continue;
       }
       const s = stripNulls(state);
-      s["transitions"] = (state["transitions"] as unknown[]).map((t) => {
+      if (!Array.isArray(s["transitions"])) {
+        nextStates[code] = s;
+        continue;
+      }
+      s["transitions"] = (s["transitions"] as unknown[]).map((t) => {
         if (!isObj(t)) return t;
         const tx = stripNulls(t);
 
@@ -156,15 +175,26 @@ function normalize08(value: unknown): { value: unknown; warnings: string[] } {
 
         if (Array.isArray(tx["processors"])) {
           tx["processors"] = (tx["processors"] as unknown[]).map((p) => {
-            if (!isObj(p) || !isObj(p["config"])) return p;
+            if (!isObj(p)) return p;
+            // `config: null` (the whole block) is treated as absent, same as
+            // every other optional key.
+            if (p["config"] === null) {
+              const { config: _config, ...rest } = p;
+              return rest;
+            }
+            if (!isObj(p["config"])) return p;
             const cfg = p["config"] as Record<string, unknown>;
+            // Computed on the *original* keys, before null-stripping: an
+            // unknown key is unknown (and will be silently dropped by Zod)
+            // whether its value is null or not. A null value on a *known*
+            // key (e.g. `context: null`) is not a dropped key — see below.
             const dropped = Object.keys(cfg).filter((k) => !CONFIG_KEYS.has(k));
             if (dropped.length > 0) {
               warnings.push(
                 `processor-config-keys-dropped:${String(p["name"])}:${dropped.join(",")}`,
               );
             }
-            return p;
+            return { ...p, config: stripNulls(cfg) };
           });
         }
         return tx;
