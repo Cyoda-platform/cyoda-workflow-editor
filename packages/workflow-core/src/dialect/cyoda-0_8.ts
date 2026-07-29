@@ -1,7 +1,7 @@
 import { outputWorkflow } from "../normalize/output.js";
 import { normalizeOperatorAlias } from "../parse/operator-alias.js";
 import type { Workflow } from "../types/workflow.js";
-import { coerceCanonicalDefaults, isObj } from "./cyoda-0_7.js";
+import { coerceCanonicalDefaults, isObj } from "./canonical-defaults.js";
 import type { CyodaDialect, ToCanonicalResult } from "./dialect.js";
 
 /**

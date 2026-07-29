@@ -6,29 +6,6 @@ function importJson(workflow: Record<string, unknown>): string {
   return JSON.stringify({ importMode: "MERGE", workflows: [workflow] });
 }
 
-const scheduledWorkflow = {
-  version: "1.0",
-  name: "wf",
-  initialState: "new",
-  active: true,
-  states: {
-    new: {
-      transitions: [
-        {
-          name: "go",
-          next: "done",
-          manual: false,
-          processors: [
-            { type: "externalized", name: "validate", executionMode: "SYNC" },
-            { type: "scheduled", name: "timer", config: { delayMs: 1000, transition: "go" } },
-          ],
-        },
-      ],
-    },
-    done: { transitions: [] },
-  },
-};
-
 const v08Workflow = {
   version: "1.0",
   name: "wf",
@@ -49,28 +26,6 @@ const v08Workflow = {
     done: { transitions: [] },
   },
 };
-
-describe("0.7 dialect drops scheduled processors with a warning", () => {
-  test("a scheduled processor is removed and reported", () => {
-    const result = parseImportPayload(importJson(scheduledWorkflow), undefined, {
-      sourceVersion: "0.7",
-    });
-
-    expect(result.ok).toBe(true);
-    expect(result.warnings).toContain("dropped-scheduled-processor:timer");
-
-    const procs = result.value?.workflows[0]?.states["new"]?.transitions[0]?.processors;
-    expect(procs?.map((p) => p.name)).toEqual(["validate"]);
-    expect(procs?.some((p) => (p as { type: string }).type === "scheduled")).toBe(false);
-  });
-
-  test("no warnings field when there is nothing to drop", () => {
-    const result = parseImportPayload(importJson(v08Workflow), undefined, {
-      sourceVersion: "0.7",
-    });
-    expect(result.warnings).toBeUndefined();
-  });
-});
 
 describe("0.8 dialect preserves transitions[].schedule", () => {
   test("schedule survives parse and is present on the canonical transition", () => {
@@ -95,14 +50,6 @@ describe("0.8 dialect preserves transitions[].schedule", () => {
     expect(wire1).toContain('"schedule"');
     expect(wire1).toContain('"delayMs": 5000');
     expect(wire1).toContain('"timeoutMs": 30000');
-  });
-
-  test("0.7 wire omits transitions[].schedule (field absent in v0.7)", () => {
-    const parsed = parseImportPayload(importJson(v08Workflow), undefined, {
-      sourceVersion: "0.8",
-    });
-    const wire07 = serializeImportPayload(parsed.document!, { targetVersion: "0.7" });
-    expect(wire07).not.toContain('"schedule"');
   });
 });
 
@@ -190,11 +137,5 @@ describe("0.8 dialect round-trips annotations", () => {
     const parsed = parseImportPayload(importJson(annotatedWorkflow), undefined, { sourceVersion: "0.8" });
     const wire = serializeImportPayload(parsed.document!, { targetVersion: "0.8" });
     expect(wire).toContain('"color"');
-  });
-
-  test("0.7 wire omits annotations (field absent in v0.7)", () => {
-    const parsed = parseImportPayload(importJson(annotatedWorkflow), undefined, { sourceVersion: "0.8" });
-    const wire07 = serializeImportPayload(parsed.document!, { targetVersion: "0.7" });
-    expect(wire07).not.toContain('"annotations"');
   });
 });
